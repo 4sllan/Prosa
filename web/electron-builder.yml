@@ -24,3 +24,15 @@ dmg:
   window:
     width: 540
     height: 380
+
+win:
+  icon: build/icon.png
+  target:
+    - nsis
+  artifactName: Prosa-${version}-${arch}-Setup.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  shortcutName: Prosa

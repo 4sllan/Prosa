@@ -113,6 +113,14 @@ npx electron-builder --prepackaged ../release/mac-universal/Prosa.app --mac dmg
 
 Artefato: `release/Prosa-<versão>-universal.dmg` — abrir e arrastar o Prosa para Aplicativos.
 
+**Windows (.exe)**
+```bash
+cd web
+VITE_API_URL=http://localhost:4000 npm run dist:win:x64     # instalador NSIS x64
+VITE_API_URL=http://localhost:4000 npm run dist:win:arm64   # instalador NSIS arm64 (Windows on ARM)
+```
+Artefatos: `release/Prosa-<versão>-x64-Setup.exe` e `Prosa-<versão>-arm64-Setup.exe` — instalador NSIS com escolha de pasta e atalho no Menu Iniciar. Build cruzado funciona no macOS (electron-builder embute o Wine para editar metadados do exe).
+
 **Configuração**
 - `VITE_API_URL` (build) ou `PROSA_API_URL` (runtime) define o backend; padrão do build atual: `http://localhost:4000`.
 - `PROSA_DEV_URL` aponta o Electron ao servidor Vite em dev.
@@ -121,4 +129,5 @@ Artefato: `release/Prosa-<versão>-universal.dmg` — abrir e arrastar o Prosa p
 
 **Pendências para distribuição pública**
 - Assinatura Developer ID + notarização Apple (o build atual é ad-hoc: em outra máquina, `xattr -cr /Applications/Prosa.app` se o Gatekeeper reclamar).
+- Windows: os `.exe` não são assinados — o SmartScreen exibirá aviso ("Mais informações → Executar assim mesmo"). Para suprimir: certificado de code-signing (EV ou OV com reputação).
 - Backend remoto público para que o app funcione fora da máquina de dev.

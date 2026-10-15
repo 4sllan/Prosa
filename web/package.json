@@ -12,7 +12,10 @@
     "dist": "vite build && electron-builder --mac dmg",
     "dist:universal": "vite build && electron-builder --mac dmg --universal",
     "dist:arm64": "vite build && electron-builder --mac dmg --arm64",
-    "dist:x64": "vite build && electron-builder --mac dmg --x64"
+    "dist:x64": "vite build && electron-builder --mac dmg --x64",
+    "dist:win": "vite build && electron-builder --win nsis",
+    "dist:win:x64": "vite build && electron-builder --win nsis --x64",
+    "dist:win:arm64": "vite build && electron-builder --win nsis --arm64"
   },
   "dependencies": {
     "pinia": "^2.3.1",
