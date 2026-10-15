@@ -180,20 +180,46 @@ export function createP2PProvider() {
     },
 
     dms: {
-      list: async () => ({
-        dms: listSpaces().filter(s => s.type === 'dm' || s.type === 'group').map(sp => {
-          const other = [...sp.members].find(m => m !== me().pubKeyHex);
-          const chId = [...sp.channels.keys()][0] || sp.id;
-          return { id: chId, spaceId: sp.id, type: 'dm', name: sp.meta?.name || other?.slice(0, 12) || 'dm', peer: other };
-        }),
-      }),
+      list: async () => {
+        const cs = await contacts.listContacts();
+        const userOf = (pk) => {
+          const c = cs.find(x => x.pubkey === pk);
+          return {
+            id: pk,
+            username: c?.profile?.username || pk.slice(0, 16),
+            displayName: c?.profile?.displayName || c?.profile?.username || pk.slice(0, 16),
+          };
+        };
+        return {
+          dms: listSpaces().filter(s => s.type === 'dm' || s.type === 'group').map(sp => {
+            const others = [...sp.members].filter(m => m !== me().pubKeyHex);
+            const chId = [...sp.channels.keys()][0] || sp.id;
+            return {
+              id: chId, spaceId: sp.id,
+              type: sp.type === 'group' ? 'group_dm' : 'dm',
+              name: sp.meta?.name || others[0]?.slice(0, 12) || 'dm',
+              peer: others[0],
+              recipients: others.map(userOf),
+              allMembers: [...sp.members],
+            };
+          }),
+        };
+      },
       open: async (peerPub) => {
         const sp = await node().openDm(peerPub);
-        return { dm: { id: [...sp.channels.keys()][0] || sp.id, spaceId: sp.id, type: 'dm' } };
+        const cs = await contacts.listContacts();
+        const c = cs.find(x => x.pubkey === peerPub);
+        const user = { id: peerPub, username: c?.profile?.username || peerPub.slice(0, 16), displayName: c?.profile?.displayName || c?.profile?.username || peerPub.slice(0, 16) };
+        return { dm: { id: [...sp.channels.keys()][0] || sp.id, spaceId: sp.id, type: 'dm', name: sp.meta?.name || user.displayName, recipients: [user], allMembers: [...sp.members] } };
       },
       createGroup: async (body) => {
         const sp = await createSpace(me(), { type: 'group', name: body.name, members: body.userIds, channels: ['geral'] });
-        return { dm: { id: [...sp.channels.keys()][0], spaceId: sp.id, name: body.name } };
+        const cs = await contacts.listContacts();
+        const userOf = (pk) => {
+          const c = cs.find(x => x.pubkey === pk);
+          return { id: pk, username: c?.profile?.username || pk.slice(0, 16), displayName: c?.profile?.displayName || c?.profile?.username || pk.slice(0, 16) };
+        };
+        return { dm: { id: [...sp.channels.keys()][0], spaceId: sp.id, type: 'group_dm', name: body.name, recipients: body.userIds.map(userOf), allMembers: [...sp.members] } };
       },
       leave: async () => {},
     },
