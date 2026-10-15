@@ -22,6 +22,13 @@ router.beforeEach((to) => {
   if (store.user && to.path === '/login') return '/';
 });
 
-bootstrap();
-
 createApp(App).use(router).mount('#app');
+
+// após o bootstrap, reconcilia a rota com o estado de sessão —
+// o guard só roda em navegações, então um hash antigo (ex.: #/login)
+// deixaria a tela errada visível mesmo com identidade válida.
+bootstrap().then(() => {
+  const to = router.currentRoute.value;
+  if (store.user && to.path === '/login') router.replace('/');
+  else if (!store.user && !to.meta.public) router.replace('/login');
+});

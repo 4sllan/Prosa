@@ -48,6 +48,12 @@ export async function applyEvent(env, store) {
   return { applied: true };
 }
 
+// hook chamado para cada evento local aplicado — registrado pelo nó para
+// notificar a UI (eventos remotos já chegam via receive(); locais precisam
+// desse caminho ou a UI nunca vê as próprias ações do usuário).
+let localListener = null;
+export function setLocalEventListener(fn) { localListener = fn; }
+
 // emite evento local assinado com seq = maxLocal+1
 export async function emitEvent(identity, spaceId, type, body, store, { persist = true } = {}) {
   const sp = spaces.get(spaceId);
@@ -57,6 +63,7 @@ export async function emitEvent(identity, spaceId, type, body, store, { persist 
   const seq = (proj.byAuthor.get(identity.pubKeyHex) || 0) + 1;
   const env = await makeSignedEnvelope(identity, { spaceId, type, body, seq });
   const r = await applyEvent(env, persist ? store : undefined);
+  if (r.applied && localListener) localListener(env);
   return { env, ...r };
 }
 

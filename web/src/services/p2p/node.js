@@ -3,7 +3,7 @@
 import { readyP2PIdentity } from './identity.js';
 import { configureTransport, p2pTransport } from './transport.js';
 import { initLocalStore, getLocalStore } from './localstore.js';
-import { makeSpace, getSpace, listSpaces, replaySpace, emitEvent, validateEnvelope, applyEvent } from './eventlog.js';
+import { makeSpace, getSpace, listSpaces, replaySpace, emitEvent, validateEnvelope, applyEvent, setLocalEventListener } from './eventlog.js';
 import { sendSyncReq, handleSyncReq, handleSyncEvent } from './sync.js';
 import { createSpace, acceptSpaceInvite, dmSpaceId } from './spaces.js';
 import * as contacts from './contacts.js';
@@ -106,6 +106,9 @@ export async function initP2PNode({ emitToStore } = {}) {
     spaces: () => listSpaces(),
     space: (id) => getSpace(id),
   };
+
+  // eventos locais aplicados também notificam a UI (remotos chegam via receive())
+  setLocalEventListener((env) => node?.emitToStore?.('space.event', { spaceId: env.spaceId, env }));
 
   // restaura espaços persistidos
   const known = await store.kvGet('spaces') || [];
