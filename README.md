@@ -121,6 +121,14 @@ VITE_API_URL=http://localhost:4000 npm run dist:win:arm64   # instalador NSIS ar
 ```
 Artefatos: `release/Prosa-<versão>-x64-Setup.exe` e `Prosa-<versão>-arm64-Setup.exe` — instalador NSIS com escolha de pasta e atalho no Menu Iniciar. Build cruzado funciona no macOS (electron-builder embute o Wine para editar metadados do exe).
 
+**Linux (.deb)**
+```bash
+cd web
+VITE_API_URL=http://localhost:4000 npm run dist:linux:x64    # .deb amd64
+VITE_API_URL=http://localhost:4000 npm run dist:linux:arm64  # .deb arm64
+```
+Artefatos: `release/Prosa-<versão>-amd64.deb` e `Prosa-<versão>-arm64.deb`. Instalação: `sudo dpkg -i Prosa-*.deb` (ou `sudo apt install ./Prosa-*.deb` para resolver as dependências gtk3/nss3 automaticamente). Cria entrada no menu de aplicativos.
+
 **Configuração**
 - `VITE_API_URL` (build) ou `PROSA_API_URL` (runtime) define o backend; padrão do build atual: `http://localhost:4000`.
 - `PROSA_DEV_URL` aponta o Electron ao servidor Vite em dev.

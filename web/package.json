@@ -1,6 +1,9 @@
 {
   "name": "prosa-web",
   "version": "0.1.0",
+  "description": "Prosa — plataforma de comunicação e comunidades",
+  "author": "Prosa <contato@prosa.app>",
+  "homepage": "https://prosa.app",
   "private": true,
   "main": "desktop/main.cjs",
   "scripts": {
@@ -15,7 +18,9 @@
     "dist:x64": "vite build && electron-builder --mac dmg --x64",
     "dist:win": "vite build && electron-builder --win nsis",
     "dist:win:x64": "vite build && electron-builder --win nsis --x64",
-    "dist:win:arm64": "vite build && electron-builder --win nsis --arm64"
+    "dist:win:arm64": "vite build && electron-builder --win nsis --arm64",
+    "dist:linux:x64": "vite build && electron-builder --linux deb --x64",
+    "dist:linux:arm64": "vite build && electron-builder --linux deb --arm64"
   },
   "dependencies": {
     "pinia": "^2.3.1",

@@ -36,3 +36,10 @@ nsis:
   allowToChangeInstallationDirectory: true
   perMachine: false
   shortcutName: Prosa
+
+linux:
+  icon: build/icon.png
+  target: deb
+  category: Network
+  maintainer: Prosa <contato@prosa.app>
+  artifactName: Prosa-${version}-${arch}.${ext}
