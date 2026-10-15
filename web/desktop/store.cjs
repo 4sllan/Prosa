@@ -148,6 +148,15 @@ function makeJournal(file) {
   };
 }
 
+// desserializa o campo profile (JSON TEXT) para objeto — evita que updateProfile
+// espalhe a string em índices de caracteres ao fazer spread
+function parseContact(row) {
+  if (!row) return row;
+  let profile = row.profile;
+  if (typeof profile === 'string') { try { profile = JSON.parse(profile); } catch { profile = {}; } }
+  return { ...row, profile };
+}
+
 async function init(userDataDir) {
   const dir = path.join(userDataDir, 'p2p');
   fs.mkdirSync(dir, { recursive: true });
