@@ -99,9 +99,10 @@ async function makeOffer() {
 async function answerOffer() {
   busy.value = true; err.value = '';
   try {
-    const { pc, dc, link } = await acceptPairingOffer(remoteLink.value);
+    const { pc, dcPromise, link } = await acceptPairingOffer(remoteLink.value);
     answerLink.value = link;
-    wirePeer(pc, dc);
+    // canal abre quando A completar o pareamento — liga os handlers então
+    dcPromise.then(dc => wirePeer(pc, dc));
   } catch (e) { err.value = e.message; }
   busy.value = false;
 }
