@@ -59,11 +59,12 @@ async function add() {
   try { await contacts.request(addName.value.trim()); addName.value = ''; await reload(); }
   catch (e) { err.value = e.message; }
 }
+const emit = defineEmits(['open-dm']);
 async function openDm(uid) {
   const r = await dms.open(uid);
   await loadDms();
   await openChannel(r.dm.id);
-  location.hash = '';
+  emit('open-dm', r.dm);
 }
 async function block(uid) { await contacts.block(uid); reload(); }
 async function unblock(uid) { await contacts.unblock(uid); reload(); }

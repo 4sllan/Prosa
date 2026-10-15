@@ -81,7 +81,7 @@
     <main class="main">
       <template v-if="view === 'friends'">
         <PairingPanel v-if="store.mode === 'p2p'" />
-        <FriendsPanel />
+        <FriendsPanel @open-dm="onDmOpened" />
       </template>
       <template v-else-if="view === 'admin'"><AdminPanel /></template>
       <template v-else-if="activeChannel">
@@ -270,6 +270,9 @@ async function openDm(d) {
   await openChannel(d.id);
   mobileChat.value = true;
 }
+
+// FriendsPanel abriu uma DM — sai da view 'friends' para exibir o chat
+function onDmOpened() { view.value = 'home'; mobileChat.value = true; }
 
 async function createCommunity() {
   if (!newCommunityName.value.trim()) return;
