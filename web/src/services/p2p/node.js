@@ -48,11 +48,31 @@ export async function initP2PNode({ emitToStore } = {}) {
         case 'sync_req': return handleSyncReq(peerId, env.body, store);
         case 'sync_event': return handleSyncEvent(peerId, env.body, store);
         case 'sync_done': return node.emitToStore?.('sync.done', { spaceId: env.body?.spaceId, peerId });
-        case 'contact_req': return contacts.handleContactReq(peerId, env.body, identity);
-        case 'contact_accept': return contacts.handleContactAccept(peerId, env.body);
-        case 'contact_remove': return contacts.handleContactRemove(peerId);
-        case 'profile': return contacts.handleProfile(peerId, env.body);
-        case 'space_invite': return acceptSpaceInvite(env.body.genesis, store);
+        case 'contact_req': {
+          const c = await contacts.handleContactReq(peerId, env.body, identity);
+          node.emitToStore?.('contacts.changed', { peerId });
+          return c;
+        }
+        case 'contact_accept': {
+          const r = await contacts.handleContactAccept(peerId, env.body);
+          node.emitToStore?.('contacts.changed', { peerId });
+          return r;
+        }
+        case 'contact_remove': {
+          const rm = await contacts.handleContactRemove(peerId);
+          node.emitToStore?.('contacts.changed', { peerId });
+          return rm;
+        }
+        case 'profile': {
+          const p = await contacts.handleProfile(peerId, env.body);
+          node.emitToStore?.('contacts.changed', { peerId });
+          return p;
+        }
+        case 'space_invite': {
+          const sp = await acceptSpaceInvite(env.body.genesis, store);
+          node.emitToStore?.('spaces.changed', { spaceId: sp?.id });
+          return sp;
+        }
         case 'presence': {
           const r = p2pTransport.receive(peerId, env);
           node.emitToStore?.('presence', { peerId, presence: env.body?.presence });

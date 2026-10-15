@@ -118,6 +118,8 @@ async function dispatchP2P(t, d) {
     case 'presence': store.presences[d.peerId] = d.presence || 'online'; break;
     case 'peer.open': store.presences[d.peerId] = 'online'; break;
     case 'peer.closed': store.presences[d.peerId] = 'offline'; break;
+    case 'contacts.changed': loadRelationships().catch(() => {}); break;
+    case 'spaces.changed': loadDms().catch(() => {}); loadCommunities().catch(() => {}); break;
     case 'typing': {
       const tmap = store.typing[d.channelId] ||= {};
       tmap[d.peerId] = Date.now();
