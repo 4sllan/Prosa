@@ -1,0 +1,12 @@
+{
+  "name": "prosa",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node --env-file=.env server/src/index.js",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "test": "npm --prefix server test",
+    "start": "node server/src/index.js"
+  }
+}

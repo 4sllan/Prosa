@@ -1,0 +1,26 @@
+appId: com.prosa.app
+productName: Prosa
+copyright: Prosa
+asar: true
+
+directories:
+  output: ../release
+
+files:
+  - desktop/**
+  - dist/**
+  - package.json
+
+mac:
+  icon: build/icon.icns
+  category: public.app-category.social-networking
+  target: dmg
+  identity: null        # ad-hoc/skip signing — configurar Developer ID para distribuição pública
+  artifactName: Prosa-${version}-${arch}.${ext}
+  minimumSystemVersion: "11.0"
+
+dmg:
+  artifactName: Prosa-${version}-${arch}.${ext}
+  window:
+    width: 540
+    height: 380

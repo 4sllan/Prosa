@@ -1,0 +1,15 @@
+{
+  "name": "prosa-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "multer": "^2.0.1",
+    "ws": "^8.18.0"
+  }
+}
