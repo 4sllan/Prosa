@@ -2,7 +2,7 @@
   <div class="shell" :class="{ 'chat-open': mobileChat }">
     <!-- Rail de comunidades -->
     <nav class="rail">
-      <div class="logo">{{ store.appName.slice(0, 4).toUpperCase() }}</div>
+      <img class="logo-img" :src="logoUrl" :alt="store.appName">
       <button class="rail-item" :class="{ active: view === 'home' }" @click="goHome" title="Início">⌂</button>
       <div class="rail-sep"></div>
       <button v-for="c in store.communities" :key="c.id" class="rail-item"
@@ -173,6 +173,7 @@
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { store, selectCommunity, openChannel, loadCommunities, loadDms, api, presenceOf, fullUrl } from '../stores.js';
+import logoUrl from '../assets/logotipo-prosa.png';
 import { rtc, joinVoice, leaveVoice } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
 import VoiceBar from '../components/VoiceBar.vue';
