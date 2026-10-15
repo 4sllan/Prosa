@@ -46,8 +46,17 @@ export async function verifyEnvelope(env) {
 import { b64url, unb64url } from './identity.js';
 export async function verifyWithPub(pubKeyHex, bytes, sigB64url) {
   const raw = hexToBytes(pubKeyHex);
-  const key = await crypto.subtle.importKey('raw', raw, { name: 'Ed25519' }, false, ['verify']);
-  return crypto.subtle.verify('Ed25519', key, unb64url(sigB64url), bytes);
+  // SPKI DER (44B) → extrai os 32B da chave raw para tentativa WebCrypto
+  const rawKey = raw.length === 44 && raw[0] === 0x30 ? raw.slice(12) : raw;
+  try {
+    const key = await crypto.subtle.importKey('raw', rawKey, { name: 'Ed25519' }, false, ['verify']);
+    return await crypto.subtle.verify('Ed25519', key, unb64url(sigB64url), bytes);
+  } catch {
+    // WebCrypto do Electron não suporta Ed25519 — delega ao processo main (Node nativo)
+    const bridge = typeof window !== 'undefined' && window.prosaDesktop?.p2p?.verify;
+    if (bridge) return bridge(pubKeyHex, b64url(bytes), sigB64url);
+    return false;
+  }
 }
 
 function hexToBytes(hex) {

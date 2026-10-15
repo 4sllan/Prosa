@@ -108,8 +108,16 @@ async function sign(bytes) {
 }
 
 async function verify(pubKeyHex, bytes, sigB64) {
-  const key = await crypto.subtle.importKey('raw', hexToBytes(pubKeyHex), { name: 'Ed25519' }, false, ['verify']);
-  return crypto.subtle.verify('Ed25519', key, unb64url(sigB64), bytes);
+  const raw = hexToBytes(pubKeyHex);
+  const rawKey = raw.length === 44 && raw[0] === 0x30 ? raw.slice(12) : raw;
+  try {
+    const key = await crypto.subtle.importKey('raw', rawKey, { name: 'Ed25519' }, false, ['verify']);
+    return await crypto.subtle.verify('Ed25519', key, unb64url(sigB64), bytes);
+  } catch {
+    const bridge = typeof window !== 'undefined' && window.prosaDesktop?.p2p?.verify;
+    if (bridge) return bridge(pubKeyHex, b64url(bytes), sigB64);
+    return false;
+  }
 }
 
 async function updateProfile(body) {

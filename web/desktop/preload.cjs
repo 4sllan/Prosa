@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('prosaDesktop', {
     pubkey: () => ipcRenderer.invoke('p2p:pubkey'),
     fingerprint: () => ipcRenderer.invoke('p2p:fingerprint'),
     sign: (dataB64) => ipcRenderer.invoke('p2p:sign', dataB64),
+    verify: (pubKeyHex, dataB64, sigB64) => ipcRenderer.invoke('p2p:verify', pubKeyHex, dataB64, sigB64),
     store: (op, args) => ipcRenderer.invoke('p2p:store', op, args),
   },
 });

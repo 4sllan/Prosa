@@ -63,6 +63,12 @@ ipcMain.handle('p2p:sign', (_e, dataB64) => {
   if (typeof dataB64 !== 'string' || dataB64.length > 64 * 1024) throw new Error('payload inválido');
   return identity.sign(dataB64);
 });
+ipcMain.handle('p2p:verify', (_e, pubKeyHex, dataB64, sigB64) => {
+  if (typeof pubKeyHex !== 'string' || pubKeyHex.length > 512) return false;
+  if (typeof dataB64 !== 'string' || dataB64.length > 128 * 1024) return false;
+  if (typeof sigB64 !== 'string' || sigB64.length > 1024) return false;
+  return identity.verify(pubKeyHex, dataB64, sigB64);
+});
 ipcMain.handle('p2p:store', (_e, op, args = {}) => {
   if (typeof op !== 'string' || !(op in store.ops)) throw new Error(`op desconhecida: ${op}`);
   return store.ops[op](args);

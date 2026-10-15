@@ -39,4 +39,20 @@ function fingerprint() {
   return 'p2p:' + h.slice(0, 16);
 }
 
-module.exports = { init, pubkey, sign, fingerprint };
+// Prefixo DER SPKI do Ed25519 (12 bytes) — usado para adaptar pubkeys raw (32B)
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+const b64norm = (s) => String(s).replace(/-/g, '+').replace(/_/g, '/');
+
+// verifica assinatura Ed25519 de qualquer pubkey (WebCrypto do renderer não suporta Ed25519)
+function verify(pubKeyHex, dataB64, sigB64) {
+  try {
+    let der = Buffer.from(pubKeyHex, 'hex');
+    if (der.length === 32) der = Buffer.concat([ED25519_SPKI_PREFIX, der]);
+    const pub = crypto.createPublicKey({ key: der, format: 'der', type: 'spki' });
+    const data = Buffer.from(b64norm(dataB64), 'base64');
+    const sig = Buffer.from(b64norm(sigB64), 'base64');
+    return crypto.verify(null, data, pub, sig);
+  } catch { return false; }
+}
+
+module.exports = { init, pubkey, sign, verify, fingerprint };
