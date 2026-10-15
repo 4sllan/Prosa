@@ -164,40 +164,42 @@ async function init(userDataDir) {
 }
 
 const ops = {
+  // Toda op recebe o objeto `args` enviado pelo bridge (localstore.js → p2p:store).
+  // Parâmetros posicionais quebrariam silenciosamente: o objeto seria bindado como valor.
   putEvent: (e) => backend.run(
     'INSERT OR REPLACE INTO events (id, space_id, author, seq, type, body, ts, sig, received_at) VALUES (?,?,?,?,?,?,?,?,?)',
     [e.id, e.spaceId, e.author, e.seq, e.type, JSON.stringify(e.body), e.ts, e.sig, e.receivedAt || Date.now()]),
-  eventsSince: (spaceId, author, seq) => backend.all(
+  eventsSince: ({ spaceId, author, seq }) => backend.all(
     'SELECT * FROM events WHERE space_id = ? AND author = ? AND seq > ? ORDER BY seq', [spaceId, author, seq]),
-  eventsInSpace: (spaceId) => backend.all(
+  eventsInSpace: ({ spaceId }) => backend.all(
     'SELECT * FROM events WHERE space_id = ? ORDER BY ts', [spaceId]),
-  maxSeq: (spaceId, author) => backend.get(
+  maxSeq: ({ spaceId, author }) => backend.get(
     'SELECT MAX(seq) AS max FROM events WHERE space_id = ? AND author = ?', [spaceId, author])?.max || 0,
-  maxSeqMap: (spaceId) => {
+  maxSeqMap: ({ spaceId }) => {
     const rows = backend.all('SELECT author, MAX(seq) AS max FROM events WHERE space_id = ? GROUP BY author', [spaceId]);
     return Object.fromEntries(rows.map(r => [r.author, r.max]));
   },
-  putProjection: (k, spaceId, v) => backend.run(
+  putProjection: ({ k, spaceId, v }) => backend.run(
     'INSERT OR REPLACE INTO projections (k, space_id, v) VALUES (?,?,?)', [k, spaceId, JSON.stringify(v)]),
-  getProjection: (k) => JSON.parse(backend.get('SELECT v FROM projections WHERE k = ?', [k])?.v || 'null'),
-  projectionsInSpace: (spaceId) => backend.all(
+  getProjection: ({ k }) => JSON.parse(backend.get('SELECT v FROM projections WHERE k = ?', [k])?.v || 'null'),
+  projectionsInSpace: ({ spaceId }) => backend.all(
     'SELECT k, v FROM projections WHERE space_id = ?', [spaceId]).map(r => ({ k: r.k, v: JSON.parse(r.v) })),
   putContact: (c) => backend.run(
     'INSERT OR REPLACE INTO contacts (pubkey, state, profile, updated_at) VALUES (?,?,?,?)',
     [c.pubkey, c.state, JSON.stringify(c.profile || {}), c.updatedAt || Date.now()]),
-  getContact: (pubkey) => backend.get('SELECT * FROM contacts WHERE pubkey = ?', [pubkey]),
-  contactsByState: (state) => backend.all('SELECT * FROM contacts WHERE state = ?', [state]),
+  getContact: ({ pubkey }) => backend.get('SELECT * FROM contacts WHERE pubkey = ?', [pubkey]),
+  contactsByState: ({ state }) => backend.all('SELECT * FROM contacts WHERE state = ?', [state]),
   allContacts: () => backend.all('SELECT * FROM contacts'),
-  removeContact: (pubkey) => backend.run('DELETE FROM contacts WHERE pubkey = ?', [pubkey]),
+  removeContact: ({ pubkey }) => backend.run('DELETE FROM contacts WHERE pubkey = ?', [pubkey]),
   putFile: (f) => backend.run(
     'INSERT OR REPLACE INTO files (hash, path, size, mime, space_id, created_at) VALUES (?,?,?,?,?,?)',
     [f.hash, f.path, f.size, f.mime, f.spaceId, f.createdAt || Date.now()]),
-  getFile: (hash) => backend.get('SELECT path FROM files WHERE hash = ?', [hash]),
-  filesInSpace: (spaceId) => backend.all('SELECT * FROM files WHERE space_id = ?', [spaceId]),
-  deleteFile: (hash) => backend.run('DELETE FROM files WHERE hash = ?', [hash]),
-  kvSet: (k, v) => backend.run('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)', [k, JSON.stringify(v)]),
-  kvGet: (k) => JSON.parse(backend.get('SELECT v FROM kv WHERE k = ?', [k])?.v || 'null'),
-  searchEvents: (spaceId, text, limit = 50) => backend.all(
+  getFile: ({ hash }) => backend.get('SELECT path FROM files WHERE hash = ?', [hash]),
+  filesInSpace: ({ spaceId }) => backend.all('SELECT * FROM files WHERE space_id = ?', [spaceId]),
+  deleteFile: ({ hash }) => backend.run('DELETE FROM files WHERE hash = ?', [hash]),
+  kvSet: ({ k, v }) => backend.run('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)', [k, JSON.stringify(v)]),
+  kvGet: ({ k }) => JSON.parse(backend.get('SELECT v FROM kv WHERE k = ?', [k])?.v || 'null'),
+  searchEvents: ({ spaceId, text, limit = 50 }) => backend.all(
     'SELECT * FROM events WHERE space_id = ? AND body LIKE ? ORDER BY ts DESC LIMIT ?',
     [spaceId, `%${text}%`, limit]),
 };
