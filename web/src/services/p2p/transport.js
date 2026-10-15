@@ -3,6 +3,8 @@
 // dedupe por event id, ACKs e fila offline. A lógica é testável com
 // MockChannel — RTCPeerConnection real é plugado por pairing.js.
 
+import { logDiag, diagFingerprint } from './diag.js';
+
 const handlers = {};
 const seen = new Set();
 const SEEN_CAP = 20000;
@@ -13,15 +15,23 @@ const spacePeers = new Map();    // spaceId -> Set<peerId>
 const pendingQueue = new Map();  // peerId -> [env]
 const QUEUE_CAP = 500;
 const presences = new Map();     // peerId -> {presence, ts}
+const lastSeen = new Map();      // peerId -> ts do último envelope recebido
+const keepTimers = new Map();    // peerId -> intervalId do keepalive
+const KEEPALIVE_MS = 25_000;     // intervalo do ping de controle
+const KEEPALIVE_MISS = 3;        // misses consecutivos antes de derrubar
 
 let me = null;                   // { id }
 let emit = () => {};
 let log = () => {};
+let keepaliveMs = KEEPALIVE_MS;
+let keepaliveMiss = KEEPALIVE_MISS;
 
-export function configureTransport({ myId, emitEvent, logger } = {}) {
+export function configureTransport({ myId, emitEvent, logger, keepaliveMs: kMs, keepaliveMiss: kMiss } = {}) {
   if (myId) me = { id: myId };
   if (emitEvent) emit = emitEvent;
   if (logger) log = logger;
+  if (kMs) keepaliveMs = kMs;
+  if (kMiss) keepaliveMiss = kMiss;
 }
 
 function markSeen(id) {
@@ -30,24 +40,47 @@ function markSeen(id) {
 }
 export function resetTransportState() {
   seen.clear(); pendingAcks.clear(); ackWaiters.clear();
+  for (const t of keepTimers.values()) clearInterval(t);
   peers.clear(); spacePeers.clear(); pendingQueue.clear(); presences.clear();
+  lastSeen.clear(); keepTimers.clear();
+  keepaliveMs = KEEPALIVE_MS; keepaliveMiss = KEEPALIVE_MISS;
 }
 
 export const p2pTransport = {
   on(type, fn) { (handlers[type] ||= []).push(fn); },
 
   // ---- peers ----
-  addPeer(peerId, channel) {
+  addPeer(peerId, channel, { keepalive = true } = {}) {
     peers.set(peerId, { channel, state: 'open' });
     presences.set(peerId, { presence: 'online', ts: Date.now() });
-    channel.onclose = () => this.dropPeer(peerId);
+    channel.onclose = () => this.dropPeer(peerId, 'channel-close');
+    lastSeen.set(peerId, Date.now());
+    // keepalive só em peers com hello v2 — legado v1 não responde 'ping'
+    if (keepalive) keepTimers.set(peerId, setInterval(() => this.keepalive(peerId), keepaliveMs));
+    logDiag('peer.open', diagFingerprint(peerId));
     emit('peer.open', { peerId });
     flushPending(peerId);
   },
-  dropPeer(peerId) {
+  keepalive(peerId) {
+    if (peers.get(peerId)?.state !== 'open') { this.stopKeepalive(peerId); return; }
+    if (Date.now() - (lastSeen.get(peerId) || 0) > keepaliveMiss * keepaliveMs) {
+      logDiag('keepalive.timeout', diagFingerprint(peerId));
+      this.dropPeer(peerId, 'keepalive-timeout');
+      return;
+    }
+    this.sendToPeer(peerId, 'ping', { t: Date.now() });
+  },
+  stopKeepalive(peerId) {
+    clearInterval(keepTimers.get(peerId));
+    keepTimers.delete(peerId);
+    lastSeen.delete(peerId);
+  },
+  dropPeer(peerId, reason = 'closed') {
     const p = peers.get(peerId);
     if (p) { p.state = 'closed'; try { p.channel.close(); } catch {} }
+    this.stopKeepalive(peerId);
     presences.set(peerId, { presence: 'offline', ts: Date.now() });
+    logDiag('peer.closed', diagFingerprint(peerId) + ':' + reason);
     emit('peer.closed', { peerId });
   },
   peerIds: () => [...peers.keys()].filter(id => peers.get(id).state === 'open'),
@@ -84,6 +117,7 @@ export const p2pTransport = {
 
   // recebeu mensagem bruta de um canal — valida, deduplica, ack, dispara
   receive(peerId, env) {
+    lastSeen.set(peerId, Date.now()); // qualquer tráfego prova liveness
     if (!env?.id || seen.has(env.id)) return false;
     markSeen(env.id);
     if (env.type === 'ack') {
@@ -153,6 +187,13 @@ export const p2pTransport = {
 };
 
 function dispatch(peerId, env) {
+  // keepalive responde aqui: ping/pong não sobem para a UI nem para o nó
+  if (env.type === 'ping') {
+    logDiag('ping.recv', diagFingerprint(peerId));
+    p2pTransport.sendToPeer(peerId, 'pong', { of: env.id });
+    return;
+  }
+  if (env.type === 'pong') { logDiag('pong.recv', diagFingerprint(peerId)); return; }
   const payload = { ...env.body, peerId, eventId: env.id, envelope: env };
   emit(env.type, payload);
   for (const fn of handlers[env.type] || []) fn(payload);
@@ -166,7 +207,7 @@ function sendNow(channel, env) {
     }
     channel.send(JSON.stringify(env));
     return true;
-  } catch (e) { log(`send fail: ${e.message}`); return false; }
+  } catch (e) { log(`send fail: ${e.message}`); logDiag('send.fail', e.message); return false; }
 }
 
 function enqueue(peerId, env) {

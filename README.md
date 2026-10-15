@@ -154,6 +154,9 @@ Arquitetura e plano completos: `docs/specs/p2p-architecture.md` e `docs/specs/p2
 - **Espaços** — DM 1:1 (`dm:`), grupo e comunidade (`cm:`) com `space.genesis` assinado; convite = genesis codificado em base64 (`communities.createInvite`/`acceptInvite`).
 - **Voz/vídeo/tela** — mesmo mesh WebRTC; `voice_state`/`signal` trafegam no canal de controle P2P e o provider sintetiza `VOICE_STATE` para o `rtc.js` existente.
 - **Busca** — `misc.search` itera as projeções locais; admin global e busca central lançam erro tipado (sem backend).
-- **Testes** — `cd web && npm test` (10 testes: envelope, dedupe/fan-out/ack, eventlog/LWW, spaces e sync).
+- **Config ICE** — precedência: `localStorage.prosa_ice` > `VITE_ICE_SERVERS_JSON` (build) > default `stun:stun.l.google.com:19302`. Formato: array JSON de `RTCIceServer` (aceita `turn:` com `username`/`credential`). Exemplo e instruções em `.env.example`. TURN é opcional — só necessário onde conexão direta é inviável (NAT simétrico/CGNAT/UDP bloqueado).
+- **Diagnóstico** — telemetria de pareamento via `localStorage.prosa_debug = '1'` (ou build dev): logs `[p2p:diag]` com tipos de candidato ICE (sem IPs), estados de conexão, `hello` e keepalive.
+- **Conexão** — `hello` assinado (Ed25519, prova de posse), fingerprint conferível no painel, keepalive `ping`/`pong` a cada 25 s mantendo NAT mapping, `restartIce` automático em queda transitória e lista de peers conhecidos persistida para re-pareamento.
+- **Testes** — `cd web && npm test` (envelope, dedupe/fan-out/ack, eventlog/LWW, spaces, sync, pareamento/keepalive).
 
-Limitações do experimental: sem relay/mailbox para peers offline, sem discovery automático (pareamento manual), convites de comunidade via link compartilhado manualmente.
+Limitações do experimental: sem relay/mailbox para peers offline, sem discovery automático (pareamento manual), convites de comunidade via link compartilhado manualmente, sem TURN embutido (configure o seu via `prosa_ice`/`VITE_ICE_SERVERS_JSON`).

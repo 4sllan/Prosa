@@ -1,7 +1,8 @@
 // p2p/node.js — orquestrador do nó P2P: identidade + transporte + log + sync.
 // Chamado no boot quando MODE=p2p; expõe hooks para stores/UI.
-import { readyP2PIdentity } from './identity.js';
+import { readyP2PIdentity, fingerprintOf } from './identity.js';
 import { configureTransport, p2pTransport } from './transport.js';
+import { logDiag, diagFingerprint } from './diag.js';
 import { initLocalStore, getLocalStore } from './localstore.js';
 import { makeSpace, getSpace, listSpaces, replaySpace, emitEvent, validateEnvelope, applyEvent, setLocalEventListener } from './eventlog.js';
 import { sendSyncReq, handleSyncReq, handleSyncEvent } from './sync.js';
@@ -27,10 +28,10 @@ export async function initP2PNode({ emitToStore } = {}) {
     emitToStore,
 
     // ---- peers ----
-    attachPeer(peerId, pc, dc) {
+    attachPeer(peerId, pc, dc, { keepalive = true } = {}) {
       attachChannel(pc, dc, {
         onOpen: async () => {
-          p2pTransport.addPeer(peerId, dc);
+          p2pTransport.addPeer(peerId, dc, { keepalive });
           // dispara sync de todos os espaços compartilhados
           for (const sp of listSpaces()) {
             if (sp.members.has(peerId)) await sendSyncReq(peerId, sp.id);
@@ -40,7 +41,27 @@ export async function initP2PNode({ emitToStore } = {}) {
         onMessage: (env) => node.receive(peerId, env),
         onClose: () => p2pTransport.dropPeer(peerId),
       });
+      // queda transitória: tenta restartIce uma vez antes de declarar offline.
+      // Candidatos antigos podem ter expirado no NAT — é só uma tentativa.
+      if (pc?.restartIce && pc.addEventListener) {
+        let restarting = false;
+        pc.addEventListener('iceconnectionstatechange', () => {
+          const s = pc.iceConnectionState;
+          if ((s !== 'disconnected' && s !== 'failed') || restarting) return;
+          restarting = true;
+          logDiag('ice.restart', diagFingerprint(peerId));
+          try { pc.restartIce(); } catch {}
+          setTimeout(() => {
+            if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+              logDiag('ice.restart.fail', diagFingerprint(peerId));
+              p2pTransport.dropPeer(peerId, 'ice-restart-failed');
+            }
+            restarting = false;
+          }, 15000);
+        });
+      }
     },
+    knownPeers: async () => (await store.kvGet('peers')) || {},
 
     async receive(peerId, env) {
       // controle vs evento persistido
@@ -129,6 +150,21 @@ export async function initP2PNode({ emitToStore } = {}) {
 
   // eventos locais aplicados também notificam a UI (remotos chegam via receive())
   setLocalEventListener((env) => node?.emitToStore?.('space.event', { spaceId: env.spaceId, env }));
+
+  // peers conhecidos: persiste pubkey/fingerprint para re-pareamento posterior
+  const rememberPeer = async (peerId, lastState) => {
+    try {
+      const peers = (await store.kvGet('peers')) || {};
+      peers[peerId] = {
+        fingerprint: peers[peerId]?.fingerprint || await fingerprintOf(peerId),
+        lastSeen: Date.now(),
+        lastState,
+      };
+      await store.kvSet('peers', peers);
+    } catch {}
+  };
+  p2pTransport.on('peer.open', ({ peerId }) => rememberPeer(peerId, 'online'));
+  p2pTransport.on('peer.closed', ({ peerId }) => rememberPeer(peerId, 'offline'));
 
   // restaura espaços persistidos
   const known = await store.kvGet('spaces') || [];

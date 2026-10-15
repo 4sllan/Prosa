@@ -11,6 +11,10 @@ import { makeSpace, getSpace, emitEvent, applyEvent, validateEnvelope, spaceProj
 import { sendSyncReq, handleSyncReq, handleSyncEvent } from '../src/services/p2p/sync.js';
 import { createSpace, acceptSpaceInvite, dmSpaceId, communitySpaceId } from '../src/services/p2p/spaces.js';
 import * as contacts from '../src/services/p2p/contacts.js';
+import { createPairingOffer, acceptPairingOffer, encodePairPayload } from '../src/services/p2p/pairing.js';
+import { makeHello, verifyHello } from '../src/services/p2p/hello.js';
+import { attachIdentity } from '../src/services/p2p/identity.js';
+import { getLocalConfig } from '../src/services/p2p/localconfig.js';
 
 // ---------- helpers ----------
 async function makeIdentity(name) {
@@ -61,6 +65,36 @@ function wireChannels(peerA, peerB) {
 const receiveHandlers = new Map();
 function onReceive(node, fn) { receiveHandlers.set(node, fn); }
 function receiveAt(node, from, data) { receiveHandlers.get(node)?.(from, JSON.parse(data)); }
+
+// RTCPeerConnection mock para testes de pareamento em Node
+class MockPc {
+  constructor(opts = {}) {
+    this.iceServers = opts.iceServers;
+    this.iceGatheringState = 'gathering';
+    this.localDescription = null;
+    this.remoteDescription = null;
+    this.createdChannel = null;
+    this._listeners = {};
+    MockPc.instances.push(this);
+  }
+  addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); }
+  createDataChannel(name) {
+    this.createdChannel = { name, bufferedAmount: 0, send() {}, close() {}, addEventListener() {} };
+    return this.createdChannel;
+  }
+  async createOffer() { return { type: 'offer', sdp: 'v=0\r\no=- 0 0 IN IP4 0.0.0.0' }; }
+  async createAnswer() { return { type: 'answer', sdp: 'v=0\r\no=- 0 0 IN IP4 0.0.0.0' }; }
+  async setLocalDescription(d) { this.localDescription = d; }
+  async setRemoteDescription(d) { this.remoteDescription = d; }
+  completeGathering() {
+    this.iceGatheringState = 'complete';
+    this.onicegatheringstatechange?.();
+    for (const fn of this._listeners.icegatheringstatechange || []) fn();
+  }
+}
+MockPc.instances = [];
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ============ envelope ============
 test('envelope assinado verifica corretamente', async () => {
@@ -218,4 +252,97 @@ test('sync: peer atrasado recebe eventos faltantes', async () => {
   const evts = sentToB.filter(x => x === 'sync_event');
   assert.equal(evts.length, 4); // genesis + 3 msgs
   dropSpace(sid);
+});
+
+// ============ pareamento: ICE completo antes do link ============
+test('pairing: link só emitido após ICE gathering complete', async () => {
+  const save = globalThis.RTCPeerConnection;
+  globalThis.RTCPeerConnection = MockPc;
+  MockPc.instances = [];
+  try {
+    const p = createPairingOffer({ timeoutMs: 500 });
+    const pc = MockPc.instances.at(-1);
+    await sleep(20);
+    pc.completeGathering();
+    const res = await p;
+    assert.equal(res.timedOut, false);
+    assert.match(res.link, /^prosa:\/\/pair\//);
+  } finally { globalThis.RTCPeerConnection = save; }
+});
+
+test('pairing: timedOut propagado quando gathering não completa', async () => {
+  const save = globalThis.RTCPeerConnection;
+  globalThis.RTCPeerConnection = MockPc;
+  MockPc.instances = [];
+  try {
+    const res = await createPairingOffer({ timeoutMs: 30 });
+    assert.equal(res.timedOut, true); // aviso de candidatos parciais na UI
+    assert.match(res.link, /^prosa:\/\/pair\//); // link ainda é gerado, com aviso
+    const answer = await acceptPairingOffer('prosa://pair/' + encodePairPayload({ t: 'offer', sdp: 'x' }), { timeoutMs: 30 });
+    assert.equal(answer.timedOut, true);
+  } finally { globalThis.RTCPeerConnection = save; }
+});
+
+// ============ hello v2 assinado ============
+test('hello: v2 assinado verifica prova de posse; v1 legado é tolerado', async () => {
+  const a = await testIdentity('alice');
+  const verifier = attachIdentity({}); // verify só precisa da pubkey do remetente
+  const h = await makeHello(a);
+  assert.equal(h.v, 2);
+  assert.deepEqual(await verifyHello(verifier, h), { ok: true, legacy: false });
+
+  // 'from' trocado por outra chave: assinatura não confere -> rejeita
+  const mallory = await testIdentity('mallory');
+  const forged = { ...h, from: mallory.pubKeyHex };
+  assert.equal((await verifyHello(verifier, forged)).ok, false);
+
+  // ts velho demais (replay) -> rejeita
+  const stale = { ...h, ts: Date.now() - 10 * 60 * 1000 };
+  assert.equal((await verifyHello(verifier, stale)).ok, false);
+
+  // v1 sem assinatura -> legado tolerado com aviso
+  const v1 = { v: 1, id: 'hello:1', type: 'hello', from: a.pubKeyHex, body: {} };
+  assert.deepEqual(await verifyHello(verifier, v1), { ok: true, legacy: true });
+});
+
+// ============ keepalive ping/pong ============
+test('transport: ping recebido responde pong sem subir para a UI', async () => {
+  resetTransportState();
+  const got = [];
+  configureTransport({ myId: 'me', emitEvent: (t) => got.push(t) });
+  const sent = [];
+  const ch = { bufferedAmount: 0, send: (d) => sent.push(JSON.parse(d)), close() {}, addEventListener() {} };
+  p2pTransport.addPeer('p2', ch, { keepalive: false });
+  p2pTransport.receive('p2', { v: 1, id: 'ping1', type: 'ping', from: 'p2', to: 'me', ts: 1, body: {} });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, 'pong');
+  assert.equal(sent[0].body.of, 'ping1');
+  assert.deepEqual(got, []); // ping/pong não emitem evento de UI
+});
+
+test('transport: keepalive derruba peer inativo após N misses', async () => {
+  resetTransportState();
+  configureTransport({ myId: 'me', emitEvent: () => {}, keepaliveMs: 10, keepaliveMiss: 3 });
+  const closed = new Promise(r => p2pTransport.on('peer.closed', ({ peerId }) => peerId === 'p2' && r(peerId)));
+  const ch = { bufferedAmount: 0, send() {}, close() {}, addEventListener() {} };
+  p2pTransport.addPeer('p2', ch);
+  await closed; // ~40ms: ping a cada 10ms, drop após 3 misses
+  assert.equal(p2pTransport.isOnline('p2'), false);
+});
+
+// ============ config ICE e peers persistidos ============
+test('localconfig: prosa_ice prevalece e aceita entrada TURN', async () => {
+  const ice = [{ urls: 'stun:stun.meu:3478' }, { urls: 'turn:turn.meu:3478', username: 'u', credential: 'p' }];
+  const save = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => k === 'prosa_ice' ? JSON.stringify(ice) : null };
+  try {
+    assert.deepEqual(getLocalConfig().iceServers, ice);
+  } finally { globalThis.localStorage = save; }
+});
+
+test('localstore: kv persiste lista de peers conhecidos', async () => {
+  const store = initLocalStore();
+  await store.kvSet('peers', { pk: { fingerprint: 'p2p:abc123', lastSeen: 1, lastState: 'online' } });
+  const peers = await store.kvGet('peers');
+  assert.equal(peers.pk.fingerprint, 'p2p:abc123');
 });

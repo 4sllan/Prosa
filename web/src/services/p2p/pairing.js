@@ -3,6 +3,7 @@
 // B abre o link, gera resposta; A cola a resposta e o DataChannel abre.
 import { b64url, unb64url } from './identity.js';
 import { getLocalConfig } from './localconfig.js';
+import { logDiag, diagCandidates } from './diag.js';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -24,23 +25,31 @@ export function decodePairPayload(s) {
   }
 }
 
-// A: cria pc + dc, aguarda ICE completo (ou timeout), devolve link.
-export async function createPairingOffer({ iceServers, timeoutMs = 8000 } = {}) {
+// A: cria pc + dc, aguarda ICE completo (ou timeout de segurança), devolve link.
+// Timeout alto: o link precisa dos candidatos srflx — gerá-lo cedo demais
+// produzia convites host-only que falhavam silenciosamente em redes remotas.
+export async function createPairingOffer({ iceServers, timeoutMs = 20000 } = {}) {
   const pc = new RTCPeerConnection({ iceServers: iceServers || getLocalConfig().iceServers });
+  const cands = diagCandidates();
+  watchPc(pc, 'A', cands);
   const dc = pc.createDataChannel('prosa', { ordered: true });
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  await waitIce(pc, timeoutMs);
+  const gather = await waitIce(pc, timeoutMs);
+  logDiag('A.waitIce', gather + ' ' + JSON.stringify(cands.snapshot()));
   return {
     pc, dc,
+    timedOut: gather === 'timeout',
     link: 'prosa://pair/' + encodePairPayload({ t: 'offer', sdp: pc.localDescription.sdp, v: 1 }),
   };
 }
 
 // B: recebe link de A, gera resposta para colar de volta.
-export async function acceptPairingOffer(link, { iceServers, timeoutMs = 8000 } = {}) {
+export async function acceptPairingOffer(link, { iceServers, timeoutMs = 20000 } = {}) {
   const { sdp } = decodePairPayload(link);
   const pc = new RTCPeerConnection({ iceServers: iceServers || getLocalConfig().iceServers });
+  const cands = diagCandidates();
+  watchPc(pc, 'B', cands);
   // O canal anunciado por A só chega quando ICE+DTLS fecham — ou seja, depois
   // que A aplicar a resposta. Aguardar dcPromise aqui criaria deadlock (B
   // esperando a conexão que depende do próprio link que ele ainda não gerou).
@@ -48,9 +57,11 @@ export async function acceptPairingOffer(link, { iceServers, timeoutMs = 8000 } 
   await pc.setRemoteDescription({ type: 'offer', sdp });
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  await waitIce(pc, timeoutMs);
+  const gather = await waitIce(pc, timeoutMs);
+  logDiag('B.waitIce', gather + ' ' + JSON.stringify(cands.snapshot()));
   return {
     pc, dcPromise,
+    timedOut: gather === 'timeout',
     link: 'prosa://pair/' + encodePairPayload({ t: 'answer', sdp: pc.localDescription.sdp, v: 1 }),
   };
 }
@@ -65,20 +76,39 @@ export async function completePairing(pc, answerLink) {
   // Normaliza stacks que emitem actpass na resposta.
   const sdp = payload.sdp.replace(/^a=setup:(?!active|passive)\w+$/gm, 'a=setup:active');
   await pc.setRemoteDescription({ type: 'answer', sdp });
+  logDiag('A.complete', 'answer applied');
+}
+
+// Instrumentação opt-in ([p2p:diag]) — usa addEventListener para coexistir
+// com os handlers funcionais do pareamento e do rtc.js.
+function watchPc(pc, side, cands) {
+  pc.addEventListener('icecandidate', (e) => {
+    if (!e.candidate) { logDiag(side + '.ice.end', 'null'); return; }
+    cands?.add(e.candidate.candidate || '');
+  });
+  pc.addEventListener('icecandidateerror', (e) =>
+    logDiag(side + '.iceerror', { code: e.errorCode, url: e.url }));
+  pc.addEventListener('icegatheringstatechange', () =>
+    logDiag(side + '.gather', pc.iceGatheringState));
+  pc.addEventListener('iceconnectionstatechange', () =>
+    logDiag(side + '.icestate', pc.iceConnectionState));
+  pc.addEventListener('connectionstatechange', () =>
+    logDiag(side + '.connstate', pc.connectionState));
 }
 
 function waitIce(pc, ms) {
   return new Promise((resolve) => {
-    if (pc.iceGatheringState === 'complete') return resolve();
-    const t = setTimeout(resolve, ms); // continua com candidatos parciais (host)
+    if (pc.iceGatheringState === 'complete') return resolve('complete');
+    const t = setTimeout(() => resolve('timeout'), ms); // continua com candidatos parciais (host)
     pc.onicegatheringstatechange = () => {
-      if (pc.iceGatheringState === 'complete') { clearTimeout(t); resolve(); }
+      if (pc.iceGatheringState === 'complete') { clearTimeout(t); resolve('complete'); }
     };
   });
 }
 
 export function attachChannel(pc, dc, { onOpen, onMessage, onClose } = {}) {
-  dc.onclose = onClose;
+  dc.onclose = (e) => { logDiag('dc.close', ''); onClose?.(e); };
+  dc.onerror = (e) => logDiag('dc.error', e.message || 'err');
   dc.onmessage = (e) => {
     let env;
     try { env = JSON.parse(e.data); } catch { return; }
@@ -86,6 +116,6 @@ export function attachChannel(pc, dc, { onOpen, onMessage, onClose } = {}) {
   };
   // se o canal já abriu (attach após handshake hello), onopen não dispara de
   // novo — executa a lógica de abertura imediatamente (addPeer, sync…)
-  if (dc.readyState === 'open') onOpen?.();
-  else dc.onopen = onOpen;
+  if (dc.readyState === 'open') { logDiag('dc.open', 'already-open'); onOpen?.(); }
+  else dc.onopen = (e) => { logDiag('dc.open', ''); onOpen?.(e); };
 }
