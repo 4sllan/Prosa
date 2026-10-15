@@ -1,6 +1,7 @@
 <template>
   <div :data-theme="store.theme" style="height:100%">
-    <router-view v-if="store.ready" />
+    <ModePicker v-if="store.ready && store.needsModePick" />
+    <router-view v-else-if="store.ready" />
     <div v-else class="empty"><div><div class="big">💬</div>Carregando {{ store.appName }}…</div></div>
     <div v-for="n in store.notifications.slice(-3)" :key="n.at" class="toast" @click="dismiss(n)">
       <b>{{ n.message?.author?.username }}</b> mencionou você

@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
-import { store, wsSend, onWs } from './stores.js';
+import { store } from './stores.js';
+import { events } from './services/index.js';
 
 // WebRTC mesh: peers = Map<`${channelId}:${userId}`, {pc, stream}>
 export const rtc = reactive({
@@ -25,7 +26,7 @@ function makePc(channelId, peerId) {
   rtc.remoteStreams[key] = entry.stream;
 
   pc.onicecandidate = (e) => {
-    if (e.candidate) wsSend('SIGNAL', { channelId, to: peerId, data: { ice: e.candidate.toJSON() } });
+    if (e.candidate) events.signal(channelId, peerId, { ice: e.candidate.toJSON() });
   };
   pc.ontrack = (e) => {
     entry.stream = e.streams[0] || entry.stream;
@@ -52,7 +53,7 @@ async function offer(channelId, peerId) {
   const pc = makePc(channelId, peerId);
   const o = await pc.createOffer();
   await pc.setLocalDescription(o);
-  wsSend('SIGNAL', { channelId, to: peerId, data: { sdp: pc.localDescription } });
+  events.signal(channelId, peerId, { sdp: pc.localDescription });
 }
 
 async function handleSignal({ channelId, from, data }) {
@@ -63,14 +64,14 @@ async function handleSignal({ channelId, from, data }) {
       const glare = data.sdp.type === 'offer' && pc.signalingState !== 'stable';
       if (glare) {
         // deterministic tie-break: smaller user id keeps its offer
-        if (myId() > from) { await pc.setLocalDescription({ type: 'rollback' }); await pc.setRemoteDescription(data.sdp); const a = await pc.createAnswer(); await pc.setLocalDescription(a); wsSend('SIGNAL', { channelId, to: from, data: { sdp: pc.localDescription } }); }
+        if (myId() > from) { await pc.setLocalDescription({ type: 'rollback' }); await pc.setRemoteDescription(data.sdp); const a = await pc.createAnswer(); await pc.setLocalDescription(a); events.signal(channelId, from, { sdp: pc.localDescription }); }
         return;
       }
       await pc.setRemoteDescription(data.sdp);
       if (data.sdp.type === 'offer') {
         const a = await pc.createAnswer();
         await pc.setLocalDescription(a);
-        wsSend('SIGNAL', { channelId, to: from, data: { sdp: pc.localDescription } });
+        events.signal(channelId, from, { sdp: pc.localDescription });
       }
     } else if (data.ice) {
       await pc.addIceCandidate(data.ice).catch(() => {});
@@ -78,9 +79,9 @@ async function handleSignal({ channelId, from, data }) {
   } catch (e) { console.warn('rtc signal', e); }
 }
 
-onWs('SIGNAL', handleSignal);
+events.on('SIGNAL', handleSignal);
 
-onWs('VOICE_STATE', ({ channelId, members }) => {
+events.on('VOICE_STATE', ({ channelId, members }) => {
   if (channelId !== rtc.channelId) return;
   const others = members.filter(m => m.userId !== myId());
   const present = new Set(others.map(m => m.userId));
@@ -101,12 +102,12 @@ export async function joinVoice(channelId) {
   await leaveVoice();
   rtc.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   rtc.channelId = channelId;
-  wsSend('VOICE_JOIN', { channelId });
+  events.joinVoice(channelId);
 }
 
 export async function leaveVoice() {
   if (!rtc.channelId) return;
-  wsSend('VOICE_LEAVE', { channelId: rtc.channelId });
+  events.leaveVoice(rtc.channelId);
   for (const key of [...rtc.peers.keys()]) { const [ch, uid] = key.split(':'); dropPeer(ch, uid); }
   rtc.localStream?.getTracks().forEach(t => t.stop());
   rtc.screenStream?.getTracks().forEach(t => t.stop());
@@ -117,7 +118,7 @@ export async function leaveVoice() {
 export function toggleMute() {
   rtc.muted = !rtc.muted;
   rtc.localStream?.getAudioTracks().forEach(t => t.enabled = !rtc.muted);
-  wsSend('VOICE_UPDATE', { channelId: rtc.channelId, state: { muted: rtc.muted } });
+  events.updateVoice(rtc.channelId, { muted: rtc.muted });
 }
 
 export async function toggleVideo() {
@@ -138,7 +139,7 @@ export async function toggleVideo() {
     });
     rtc.video = false;
   }
-  wsSend('VOICE_UPDATE', { channelId: rtc.channelId, state: { video: rtc.video } });
+  events.updateVoice(rtc.channelId, { video: rtc.video });
 }
 
 export async function toggleScreen() {
@@ -159,12 +160,12 @@ export async function toggleScreen() {
     rtc.screenStream = null;
     rtc.screen = false;
   }
-  wsSend('VOICE_UPDATE', { channelId: rtc.channelId, state: { screen: rtc.screen } });
+  events.updateVoice(rtc.channelId, { screen: rtc.screen });
 }
 
 export function toggleDeafen() {
   rtc.deafened = !rtc.deafened;
   if (rtc.deafened && !rtc.muted) toggleMute();
   if (!rtc.deafened && rtc.muted) toggleMute();
-  wsSend('VOICE_UPDATE', { channelId: rtc.channelId, state: { deafened: rtc.deafened } });
+  events.updateVoice(rtc.channelId, { deafened: rtc.deafened });
 }

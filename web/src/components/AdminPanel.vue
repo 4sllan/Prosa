@@ -28,24 +28,24 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { api } from '../stores.js';
+import { admin } from '../services/index.js';
 
 const users = ref([]); const reports = ref([]); const stats = ref(null);
 const openReports = computed(() => reports.value.filter(r => r.status === 'open'));
 
 async function load() {
   [users.value, reports.value, stats.value] = await Promise.all([
-    api('/admin/users').then(r => r.users),
-    api('/admin/reports').then(r => r.reports),
-    api('/admin/stats'),
+    admin.users().then(r => r.users),
+    admin.reports().then(r => r.reports),
+    admin.stats(),
   ]);
 }
 async function toggleSuspend(u) {
-  await api(`/admin/users/${u.id}/${u.suspended ? 'unsuspend' : 'suspend'}`, { method: 'POST' });
+  if (u.suspended) await admin.unsuspend(u.id); else await admin.suspend(u.id);
   load();
 }
 async function resolve(id, status) {
-  await api(`/admin/reports/${id}/resolve`, { method: 'POST', body: { status } });
+  await admin.resolveReport(id, status);
   load();
 }
 onMounted(load);

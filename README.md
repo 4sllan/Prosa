@@ -139,3 +139,21 @@ Artefatos: `release/Prosa-<versão>-amd64.deb` e `Prosa-<versão>-arm64.deb`. In
 - Assinatura Developer ID + notarização Apple (o build atual é ad-hoc: em outra máquina, `xattr -cr /Applications/Prosa.app` se o Gatekeeper reclamar).
 - Windows: os `.exe` não são assinados — o SmartScreen exibirá aviso ("Mais informações → Executar assim mesmo"). Para suprimir: certificado de code-signing (EV ou OV com reputação).
 - Backend remoto público para que o app funcione fora da máquina de dev.
+
+## Modo P2P (experimental)
+
+Arquitetura e plano completos: `docs/specs/p2p-architecture.md` e `docs/specs/p2p-architecture-tasks.md`.
+
+- **Seleção de modo** — primeiro boot mostra um seletor; persistido em `localStorage.prosa_mode` (`server` ou `p2p`). Padrão: `server`.
+- **Identidade** — Ed25519 por instalação. No Electron a chave privada fica no processo main (`web/desktop/identity.cjs`, arquivo `identity.key` em `userData/p2p/` com modo `0600`); o renderer só recebe pubkey/assinaturas via IPC (`p2p:pubkey`, `p2p:sign`, `p2p:fingerprint`). No navegador em dev, cai para WebCrypto + `localStorage` (marcado `devOnly` — não é armazenamento de produção).
+- **Persistência local** — `web/desktop/store.cjs` com backend `node:sqlite` → `sql.js` → journal JSON, acessado pelo renderer via IPC tipada `p2p:store` (ops nomeadas, nunca SQL arbitrário). Tabelas: `events`, `projections`, `contacts`, `files`, `kv`.
+- **Eventos assinados** — envelope `{v,id,spaceId,author,seq,type,ts,body,sig}` com `id = spaceId:author:seq` e assinatura Ed25519 sobre JSON canônico. Seq monotônica por autor/espaço dá dedupe e ordenação; regras LWW/permissões em `p2p/converge.js` (só o autor edita; só admin remove membro/canal).
+- **Pareamento** — link manual `prosa://pair/<offer>`/`prosa://pair/<answer>` gerado no painel "Rede P2P" (visão Amigos). Um lado gera convite, o outro cola e devolve a resposta; o DataChannel abre e envia `hello` com a pubkey — que vira o `peerId`.
+- **Transporte** — `p2p/transport.js`: fan-out por espaço, dedupe por event-id, ACKs com `waitAcks`, fila offline reenviada ao reconectar. Canais: controle efêmero (`presence`, `typing`, `voice_state`, `signal`) e eventos assinados persistidos.
+- **Sync** — ao conectar, cada lado troca `maxSeq` por autor/espaço (`sync_req`/`sync_event`/`sync_done`); eventos faltantes são revalidados (assinatura + seq) antes de entrar no log.
+- **Espaços** — DM 1:1 (`dm:`), grupo e comunidade (`cm:`) com `space.genesis` assinado; convite = genesis codificado em base64 (`communities.createInvite`/`acceptInvite`).
+- **Voz/vídeo/tela** — mesmo mesh WebRTC; `voice_state`/`signal` trafegam no canal de controle P2P e o provider sintetiza `VOICE_STATE` para o `rtc.js` existente.
+- **Busca** — `misc.search` itera as projeções locais; admin global e busca central lançam erro tipado (sem backend).
+- **Testes** — `cd web && npm test` (10 testes: envelope, dedupe/fan-out/ack, eventlog/LWW, spaces e sync).
+
+Limitações do experimental: sem relay/mailbox para peers offline, sem discovery automático (pareamento manual), convites de comunidade via link compartilhado manualmente.

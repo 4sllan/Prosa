@@ -1,7 +1,12 @@
 import { reactive } from 'vue';
-import { api, getToken, setToken, uploadFiles, wsBase } from './api.js';
+import { getToken, setToken, wsBase } from './api.js';
+import { configureRealtime, connectRealtime, closeRealtime } from './services/realtime.js';
+import * as services from './services/index.js';
+import { readyP2PIdentity } from './services/p2p/identity.js';
+import { initP2PNode } from './services/p2p/node.js';
 
-export { api, uploadFiles, getToken, setToken, fullUrl } from './api.js';
+export { getToken, setToken, fullUrl } from './api.js';
+export * as services from './services/index.js';
 
 export const store = reactive({
   appName: 'Prosa',
@@ -24,34 +29,18 @@ export const store = reactive({
   notifications: [],
   theme: localStorage.getItem('prosa_theme') || 'dark',
   mobileNav: 'channels', // 'rail'|'channels'|'chat' for responsive
+  mode: services.MODE,
+  needsModePick: false,
 });
 
 // ---------- WS ----------
-let ws = null;
-let wsRetry = 0;
-const handlers = {};
-
-export function onWs(type, fn) { (handlers[type] ||= []).push(fn); }
-
-export function wsSend(t, d) {
-  if (ws?.readyState === 1) ws.send(JSON.stringify({ t, d }));
-}
-
-export function connectWs() {
-  if (!getToken()) return;
-  ws = new WebSocket(`${wsBase()}/ws?token=${getToken()}`);
-  ws.onopen = () => { store.wsConnected = true; wsRetry = 0; };
-  ws.onclose = () => {
-    store.wsConnected = false;
-    ws = null;
-    if (store.user) setTimeout(connectWs, Math.min(15000, 500 * ++wsRetry));
-  };
-  ws.onmessage = (ev) => {
-    let m; try { m = JSON.parse(ev.data); } catch { return; }
-    dispatch(m.t, m.d);
-    for (const fn of handlers[m.t] || []) fn(m.d);
-  };
-}
+configureRealtime({
+  getToken,
+  wsBase,
+  dispatch,
+  onStateChange: (connected) => { store.wsConnected = connected; },
+  canReconnect: () => !!store.user,
+});
 
 function dispatch(t, d) {
   switch (t) {
@@ -106,18 +95,64 @@ function dispatch(t, d) {
   }
 }
 
+// eventos vindos do nó P2P (domínio + controle)
+async function dispatchP2P(t, d) {
+  switch (t) {
+    case 'space.event': {
+      const env = d.env;
+      const chId = env.body?.channelId || env.body?.channel?.id;
+      if (env.type.startsWith('message.') || env.type === 'pin' || env.type === 'reaction') {
+        const r = await services.messages.list(chId);
+        store.messages[chId] = r.messages;
+        if (env.type === 'message.send' && env.author !== store.user?.id) {
+          store.notifications.push({ type: 'message', channelId: chId, at: Date.now(), message: env.body.message });
+        }
+      } else if (env.type.startsWith('channel.') || env.type.startsWith('member.') || env.type === 'space.meta') {
+        loadCommunities().catch(() => {});
+        loadDms().catch(() => {});
+        if (store.currentCommunity?.id === env.spaceId) loadCommunity(env.spaceId).catch(() => {});
+      }
+      break;
+    }
+    case 'presence': store.presences[d.peerId] = d.presence || 'online'; break;
+    case 'peer.open': store.presences[d.peerId] = 'online'; break;
+    case 'peer.closed': store.presences[d.peerId] = 'offline'; break;
+    case 'typing': {
+      const tmap = store.typing[d.channelId] ||= {};
+      tmap[d.peerId] = Date.now();
+      break;
+    }
+    case 'sync.done': break;
+  }
+}
+
 // ---------- API actions ----------
 
 export async function bootstrap() {
-  const cfg = await api('/config');
+  // modo não escolhido ainda: mostra seletor antes de qualquer bootstrap
+  if (!services.chosenMode()) { store.needsModePick = true; store.ready = true; return; }
+
+  const cfg = await services.config.get();
   store.appName = cfg.name;
   store.iceServers = cfg.iceServers;
   document.title = cfg.name;
+
+  if (services.MODE === 'p2p') {
+    // identidade local por chave + nó P2P completo — sem token/servidor
+    const ident = await readyP2PIdentity();
+    store.user = ident.publicUser();
+    await initP2PNode({ emitToStore: dispatchP2P });
+    store.wsConnected = true; // nó local sempre "conectado"
+    await Promise.all([loadCommunities(), loadDms(), loadRelationships(), loadPresences()]);
+    store.ready = true;
+    return;
+  }
+
   if (!getToken()) { store.ready = true; return; }
   try {
-    const me = await api('/users/@me');
+    const me = await services.users.me();
     store.user = me.user;
-    connectWs();
+    connectRealtime();
     await Promise.all([loadCommunities(), loadDms(), loadRelationships(), loadPresences()]);
   } catch (e) {
     if (e.status === 401) setToken('');
@@ -126,35 +161,35 @@ export async function bootstrap() {
 }
 
 export async function login(login_, password) {
-  const r = await api('/auth/login', { method: 'POST', body: { login: login_, password } });
+  const r = await services.auth.login(login_, password);
   setToken(r.token);
   store.user = r.user;
-  connectWs();
+  connectRealtime();
   await Promise.all([loadCommunities(), loadDms(), loadRelationships(), loadPresences()]);
 }
 
 export async function register(username, email, password) {
-  const r = await api('/auth/register', { method: 'POST', body: { username, email, password } });
+  const r = await services.auth.register(username, email, password);
   setToken(r.token);
   store.user = r.user;
-  connectWs();
+  connectRealtime();
   await Promise.all([loadCommunities(), loadDms(), loadRelationships()]);
 }
 
 export async function logout() {
-  try { await api('/auth/logout', { method: 'POST' }); } catch {}
+  try { await services.auth.logout(); } catch {}
   setToken('');
-  ws?.close();
+  closeRealtime();
   store.user = null; store.communities = []; store.dms = []; store.messages = {};
 }
 
 export async function loadCommunities() {
-  const r = await api('/communities');
+  const r = await services.communities.list();
   store.communities = r.communities;
 }
 
 export async function loadCommunity(cid) {
-  const r = await api(`/communities/${cid}`);
+  const r = await services.communities.get(cid);
   store.currentCommunity = r.community;
   store.channels = r.channels;
   store.categories = r.categories;
@@ -169,18 +204,18 @@ export async function selectCommunity(c) {
 }
 
 export async function loadDms() {
-  const r = await api('/dms');
+  const r = await services.dms.list();
   store.dms = r.dms;
 }
 
 export async function loadRelationships() {
-  const r = await api('/users/@me/relationships');
+  const r = await services.contacts.list();
   store.relationships = r.relationships;
 }
 
 export async function loadPresences() {
   try {
-    const r = await api('/users/@me/presences');
+    const r = await services.users.presences();
     Object.assign(store.presences, r.presences);
   } catch {}
 }
@@ -188,19 +223,19 @@ export async function loadPresences() {
 export async function openChannel(channelId) {
   store.activeChannelId = channelId;
   if (!store.messages[channelId]) {
-    const r = await api(`/channels/${channelId}/messages`);
+    const r = await services.messages.list(channelId);
     store.messages[channelId] = r.messages;
   }
-  api(`/channels/${channelId}/read`, { method: 'POST', body: {} }).catch(() => {});
+  services.messages.markRead(channelId, {}).catch(() => {});
 }
 
 export async function sendMessage(channelId, content, { replyTo, files } = {}) {
   let attachments = [];
   if (files?.length) {
-    const up = await uploadFiles(files);
+    const up = await services.files.upload(files);
     attachments = up.files;
   }
-  await api(`/channels/${channelId}/messages`, { method: 'POST', body: { content, replyTo, attachments } });
+  await services.messages.send(channelId, { content, replyTo, attachments });
 }
 
 export function presenceOf(userId) {

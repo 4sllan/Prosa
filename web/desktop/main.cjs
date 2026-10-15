@@ -1,5 +1,7 @@
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('node:path');
+const store = require('./store.cjs');
+const identity = require('./identity.cjs');
 
 // Dev: PROSA_DEV_URL=http://localhost:5173 carrega o Vite; senão, dist/ local.
 const DEV_URL = process.env.PROSA_DEV_URL || '';
@@ -54,7 +56,23 @@ ipcMain.handle('app:info', () => ({
   apiBase: API_URL,
 }));
 
-app.whenReady().then(() => {
+// ---- P2P: identidade e storage locais (renderer nunca vê chave privada/SQL) ----
+ipcMain.handle('p2p:pubkey', () => identity.pubkey());
+ipcMain.handle('p2p:fingerprint', () => identity.fingerprint());
+ipcMain.handle('p2p:sign', (_e, dataB64) => {
+  if (typeof dataB64 !== 'string' || dataB64.length > 64 * 1024) throw new Error('payload inválido');
+  return identity.sign(dataB64);
+});
+ipcMain.handle('p2p:store', (_e, op, args = {}) => {
+  if (typeof op !== 'string' || !(op in store.ops)) throw new Error(`op desconhecida: ${op}`);
+  return store.ops[op](args);
+});
+
+app.whenReady().then(async () => {
+  const dataDir = app.getPath('userData');
+  identity.init(dataDir);
+  const backendName = await store.init(dataDir);
+  console.log(`[p2p] storage backend: ${backendName}`);
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

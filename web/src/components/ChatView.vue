@@ -65,7 +65,8 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
-import { store, api, sendMessage, wsSend, fullUrl } from '../stores.js';
+import { store, sendMessage, fullUrl } from '../stores.js';
+import { messages as messagesService } from '../services/index.js';
 
 const props = defineProps({ channel: Object });
 const draft = ref(''); const files = ref([]); const replyTo = ref(null);
@@ -113,19 +114,20 @@ async function send() {
 
 let typingAt = 0;
 function notifyTyping() {
-  if (Date.now() - typingAt > 3000) { typingAt = Date.now(); wsSend('TYPING', { channelId: props.channel.id }); }
+  if (Date.now() - typingAt > 3000) { typingAt = Date.now(); messagesService.typing(props.channel.id); }
 }
 
 async function saveEdit(m) {
-  await api(`/channels/${props.channel.id}/messages/${m.id}`, { method: 'PATCH', body: { content: editText.value } });
+  await messagesService.edit(props.channel.id, m.id, { content: editText.value });
   editing.value = null;
 }
 async function del(m) {
   if (!confirm('Excluir esta mensagem?')) return;
-  await api(`/channels/${props.channel.id}/messages/${m.id}`, { method: 'DELETE' });
+  await messagesService.delete(props.channel.id, m.id);
 }
 async function pin(m) {
-  await api(`/channels/${props.channel.id}/messages/${m.id}/pin`, { method: m.pinned ? 'DELETE' : 'POST' });
+  if (m.pinned) await messagesService.unpin(props.channel.id, m.id);
+  else await messagesService.pin(props.channel.id, m.id);
 }
 function react(m, emoji) { toggleReaction(m, emoji); }
 function customReact(m) {
@@ -134,7 +136,8 @@ function customReact(m) {
 }
 async function toggleReaction(m, emoji) {
   const mine = m.reactions.find(r => r.emoji === emoji && r.users.includes(store.user.id));
-  await api(`/channels/${props.channel.id}/messages/${m.id}/reactions/${encodeURIComponent(emoji)}`, { method: mine ? 'DELETE' : 'PUT' });
+  if (mine) await messagesService.unreact(props.channel.id, m.id, emoji);
+  else await messagesService.react(props.channel.id, m.id, emoji);
 }
 
 async function onScroll() {
@@ -142,7 +145,7 @@ async function onScroll() {
     loadingMore.value = true;
     const oldest = messages.value[0];
     try {
-      const r = await api(`/channels/${props.channel.id}/messages?before=${oldest.id}&limit=50`);
+      const r = await messagesService.list(props.channel.id, { before: oldest.id, limit: 50 });
       store.messages[props.channel.id] = [...r.messages, ...messages.value];
     } catch {}
     loadingMore.value = false;

@@ -1,0 +1,76 @@
+// p2p/pairing.js — pareamento manual por link (offer/answer).
+// A gera link "prosa://pair?<payload>" com offer SDP + fingerprint;
+// B abre o link, gera resposta; A cola a resposta e o DataChannel abre.
+import { b64url, unb64url } from './identity.js';
+import { getLocalConfig } from './localconfig.js';
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+export function encodePairPayload(obj) {
+  const bytes = enc.encode(JSON.stringify(obj));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return b64url(new Uint8Array([...bin].map(c => c.charCodeAt(0))));
+}
+export function decodePairPayload(s) {
+  const bytes = unb64url(s.replace(/^prosa:\/\/pair\/?/, '').replace(/^#/, ''));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return JSON.parse(bin);
+}
+
+// A: cria pc + dc, aguarda ICE completo (ou timeout), devolve link.
+export async function createPairingOffer({ iceServers, timeoutMs = 8000 } = {}) {
+  const pc = new RTCPeerConnection({ iceServers: iceServers || getLocalConfig().iceServers });
+  const dc = pc.createDataChannel('prosa', { ordered: true });
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitIce(pc, timeoutMs);
+  return {
+    pc, dc,
+    link: 'prosa://pair/' + encodePairPayload({ t: 'offer', sdp: pc.localDescription.sdp, v: 1 }),
+  };
+}
+
+// B: recebe link de A, gera resposta para colar de volta.
+export async function acceptPairingOffer(link, { iceServers, timeoutMs = 8000 } = {}) {
+  const { sdp } = decodePairPayload(link);
+  const pc = new RTCPeerConnection({ iceServers: iceServers || getLocalConfig().iceServers });
+  const dcPromise = new Promise(res => { pc.ondatachannel = (e) => res(e.channel); });
+  await pc.setRemoteDescription({ type: 'offer', sdp });
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await waitIce(pc, timeoutMs);
+  const dc = await dcPromise;
+  return {
+    pc, dc,
+    link: 'prosa://pair/' + encodePairPayload({ t: 'answer', sdp: pc.localDescription.sdp, v: 1 }),
+  };
+}
+
+// A: cola a resposta de B para concluir.
+export async function completePairing(pc, answerLink) {
+  const { sdp } = decodePairPayload(answerLink);
+  await pc.setRemoteDescription({ type: 'answer', sdp });
+}
+
+function waitIce(pc, ms) {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') return resolve();
+    const t = setTimeout(resolve, ms); // continua com candidatos parciais (host)
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === 'complete') { clearTimeout(t); resolve(); }
+    };
+  });
+}
+
+export function attachChannel(pc, dc, { onOpen, onMessage, onClose } = {}) {
+  dc.onopen = onOpen;
+  dc.onclose = onClose;
+  dc.onmessage = (e) => {
+    let env;
+    try { env = JSON.parse(e.data); } catch { return; }
+    onMessage?.(env);
+  };
+}

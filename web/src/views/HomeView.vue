@@ -79,7 +79,10 @@
 
     <!-- Main -->
     <main class="main">
-      <template v-if="view === 'friends'"><FriendsPanel /></template>
+      <template v-if="view === 'friends'">
+        <PairingPanel v-if="store.mode === 'p2p'" />
+        <FriendsPanel />
+      </template>
       <template v-else-if="view === 'admin'"><AdminPanel /></template>
       <template v-else-if="activeChannel">
         <div class="topbar">
@@ -172,12 +175,14 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { store, selectCommunity, openChannel, loadCommunities, loadDms, api, presenceOf, fullUrl } from '../stores.js';
+import { store, selectCommunity, openChannel, loadCommunities, loadDms, presenceOf, fullUrl } from '../stores.js';
+import { communities, dms, users, misc } from '../services/index.js';
 import logoUrl from '../assets/logotipo-prosa.png';
 import { rtc, joinVoice, leaveVoice } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
 import VoiceBar from '../components/VoiceBar.vue';
 import FriendsPanel from '../components/FriendsPanel.vue';
+import PairingPanel from '../components/PairingPanel.vue';
 import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
@@ -268,7 +273,7 @@ async function openDm(d) {
 
 async function createCommunity() {
   if (!newCommunityName.value.trim()) return;
-  const r = await api('/communities', { method: 'POST', body: { name: newCommunityName.value, description: newCommunityDesc.value } });
+  const r = await communities.create({ name: newCommunityName.value, description: newCommunityDesc.value });
   newCommunityName.value = ''; newCommunityDesc.value = ''; showCreate.value = false;
   await loadCommunities();
   const c = store.communities.find(x => x.id === r.community.id);
@@ -278,7 +283,7 @@ async function createCommunity() {
 async function acceptInvite() {
   if (!inviteCode.value.trim()) return;
   try {
-    const r = await api(`/communities/invite/${inviteCode.value.trim()}/accept`, { method: 'POST' });
+    const r = await communities.acceptInvite(inviteCode.value.trim());
     inviteCode.value = ''; showJoin.value = false;
     await loadCommunities();
     const c = store.communities.find(x => x.id === r.communityId);
@@ -290,14 +295,14 @@ function newChannel(catId) { newChannelCat.value = catId; showNewChannel.value =
 
 async function createChannel() {
   if (!newChannelName.value.trim()) return;
-  await api(`/communities/${store.currentCommunity.id}/channels`, { method: 'POST', body: { name: newChannelName.value, type: newChannelType.value, categoryId: newChannelCat.value } });
+  await communities.createChannel(store.currentCommunity.id, { name: newChannelName.value, type: newChannelType.value, categoryId: newChannelCat.value });
   newChannelName.value = ''; showNewChannel.value = false;
   await selectCommunity(store.currentCommunity);
 }
 
 async function createGroup() {
   if (!groupName.value.trim() || !groupSel.value.length) return;
-  await api('/dms/group', { method: 'POST', body: { name: groupName.value, userIds: groupSel.value } });
+  await dms.createGroup({ name: groupName.value, userIds: groupSel.value });
   groupName.value = ''; groupSel.value = []; showNewGroup.value = false;
   await loadDms();
 }
@@ -306,7 +311,7 @@ function cyclePresence() {
   const order = ['online', 'idle', 'dnd', 'invisible'];
   const next = order[(order.indexOf(myPresence.value) + 1) % order.length];
   localStorage.setItem('prosa_presence', next);
-  api('/users/@me/presence', { method: 'PATCH', body: { presence: next } });
+  users.setPresence(next);
 }
 
 function memberMenu(m) {
@@ -315,17 +320,16 @@ function memberMenu(m) {
   const action = prompt(`Ação para ${m.user.username}: kick | ban | cargo (admin/moderator/member)`);
   if (!action) return;
   const cid = store.currentCommunity.id;
-  if (action === 'kick') api(`/communities/${cid}/members/${m.user.id}/kick`, { method: 'POST' }).catch(e => alert(e.message));
-  if (action === 'ban') api(`/communities/${cid}/members/${m.user.id}/ban`, { method: 'POST', body: { reason: 'moderação' } }).catch(e => alert(e.message));
-  if (['admin', 'moderator', 'member'].includes(action)) api(`/communities/${cid}/members/${m.user.id}`, { method: 'PATCH', body: { role: action } }).catch(e => alert(e.message));
+  if (action === 'kick') communities.kick(cid, m.user.id).catch(e => alert(e.message));
+  if (action === 'ban') communities.ban(cid, m.user.id, { reason: 'moderação' }).catch(e => alert(e.message));
+  if (['admin', 'moderator', 'member'].includes(action)) communities.setRole(cid, m.user.id, action).catch(e => alert(e.message));
 }
 
 function doSearch() {
   clearTimeout(searchTimer);
   if (searchQ.value.trim().length < 2) { searchResults.value = null; return; }
   searchTimer = setTimeout(async () => {
-    const chParam = store.activeChannelId ? `&channelId=${store.activeChannelId}` : '';
-    searchResults.value = await api(`/search?q=${encodeURIComponent(searchQ.value)}${chParam}`);
+    searchResults.value = await misc.search(searchQ.value, store.activeChannelId);
   }, 300);
 }
 

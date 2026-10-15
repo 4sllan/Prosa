@@ -11,8 +11,8 @@
     <div v-for="r in incoming" :key="r.id" class="list-item">
       <span class="avatar">{{ ini(r.user.displayName) }}</span>
       <div class="grow"><div class="uname">{{ r.user.displayName }}</div><div class="sub">@{{ r.user.username }}</div></div>
-      <button class="btn primary" @click="api(`/users/@me/relationships/${r.user.id}/accept`, {method:'POST'}).then(reload)">Aceitar</button>
-      <button class="btn ghost" @click="api(`/users/@me/relationships/${r.user.id}`, {method:'DELETE'}).then(reload)">Recusar</button>
+      <button class="btn primary" @click="contacts.accept(r.user.id).then(reload)">Aceitar</button>
+      <button class="btn ghost" @click="contacts.remove(r.user.id).then(reload)">Recusar</button>
     </div>
 
     <h3 style="margin:18px 0 8px;color:var(--fg-dim)">Enviadas — {{ outgoing.length }}</h3>
@@ -42,7 +42,8 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { store, api, loadRelationships, loadDms, openChannel, presenceOf } from '../stores.js';
+import { store, loadRelationships, loadDms, openChannel, presenceOf } from '../stores.js';
+import { contacts, dms } from '../services/index.js';
 
 const addName = ref(''); const err = ref('');
 const friends = computed(() => store.relationships.filter(r => r.type === 'friend'));
@@ -55,16 +56,16 @@ const reload = () => loadRelationships();
 
 async function add() {
   err.value = '';
-  try { await api('/users/@me/relationships', { method: 'POST', body: { username: addName.value.trim() } }); addName.value = ''; await reload(); }
+  try { await contacts.request(addName.value.trim()); addName.value = ''; await reload(); }
   catch (e) { err.value = e.message; }
 }
 async function openDm(uid) {
-  const r = await api(`/dms/open/${uid}`, { method: 'POST' });
+  const r = await dms.open(uid);
   await loadDms();
   await openChannel(r.dm.id);
   location.hash = '';
 }
-async function block(uid) { await api(`/users/@me/relationships/${uid}/block`, { method: 'POST' }); reload(); }
-async function unblock(uid) { await api(`/users/@me/relationships/${uid}/block`, { method: 'DELETE' }); reload(); }
-async function remove(uid) { await api(`/users/@me/relationships/${uid}`, { method: 'DELETE' }); reload(); }
+async function block(uid) { await contacts.block(uid); reload(); }
+async function unblock(uid) { await contacts.unblock(uid); reload(); }
+async function remove(uid) { await contacts.remove(uid); reload(); }
 </script>
