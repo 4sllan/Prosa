@@ -6,7 +6,7 @@ const DEFAULT_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
 export function getLocalConfig() {
   let ice = DEFAULT_ICE;
   try {
-    const raw = localStorage.getItem('prosa_ice') || (import.meta?.env?.VITE_ICE_SERVERS_JSON);
+    const raw = localStorage.getItem('prosa_ice') || import.meta.env.VITE_ICE_SERVERS_JSON;
     if (raw) ice = JSON.parse(raw);
   } catch {}
   return { name: 'Prosa', mode: 'p2p', iceServers: ice };
