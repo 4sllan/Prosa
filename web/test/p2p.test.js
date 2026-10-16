@@ -11,7 +11,7 @@ import { makeSpace, getSpace, emitEvent, applyEvent, validateEnvelope, spaceProj
 import { sendSyncReq, handleSyncReq, handleSyncEvent } from '../src/services/p2p/sync.js';
 import { createSpace, acceptSpaceInvite, dmSpaceId, communitySpaceId } from '../src/services/p2p/spaces.js';
 import * as contacts from '../src/services/p2p/contacts.js';
-import { createPairingOffer, acceptPairingOffer, encodePairPayload } from '../src/services/p2p/pairing.js';
+import { createPairingOffer, acceptPairingOffer, completePairing, attachChannel, encodePairPayload } from '../src/services/p2p/pairing.js';
 import { makeHello, verifyHello } from '../src/services/p2p/hello.js';
 import { attachIdentity } from '../src/services/p2p/identity.js';
 import { getLocalConfig } from '../src/services/p2p/localconfig.js';
@@ -95,6 +95,17 @@ class MockPc {
 MockPc.instances = [];
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// DataChannel pareado: send de um lado dispara onmessage do outro (síncrono)
+function makeMockDc() {
+  return { readyState: 'open', bufferedAmount: 0, send() {}, close() {}, onopen: null, onmessage: null, onclose: null, onerror: null };
+}
+function pairMockDcs(a, b) {
+  a.send = (d) => b.onmessage?.({ data: d });
+  b.send = (d) => a.onmessage?.({ data: d });
+  a.close = () => b.onclose?.({});
+  b.close = () => a.onclose?.({});
+}
 
 // ============ envelope ============
 test('envelope assinado verifica corretamente', async () => {
@@ -345,4 +356,67 @@ test('localstore: kv persiste lista de peers conhecidos', async () => {
   await store.kvSet('peers', { pk: { fingerprint: 'p2p:abc123', lastSeen: 1, lastState: 'online' } });
   const peers = await store.kvGet('peers');
   assert.equal(peers.pk.fingerprint, 'p2p:abc123');
+});
+
+// ============ e2e: pareamento A↔B completo ============
+test('e2e: dois nós A↔B pareiam via link, trocam hello v2 assinado e enviam dados', async () => {
+  const save = globalThis.RTCPeerConnection;
+  globalThis.RTCPeerConnection = MockPc;
+  MockPc.instances = [];
+  try {
+    resetTransportState();
+    configureTransport({ myId: 'B', emitEvent: () => {} });
+    const a = await testIdentity('a');
+    const b = await testIdentity('b');
+    const ver = attachIdentity({});
+
+    // A gera convite (ICE completo) → B aceita e devolve resposta → A completa
+    const pOffer = createPairingOffer({ timeoutMs: 500 });
+    await sleep(5); MockPc.instances[0].completeGathering();
+    const { pc: pcA, dc: dcA, link: offerLink } = await pOffer;
+    const pAns = acceptPairingOffer(offerLink, { timeoutMs: 500 });
+    await sleep(5); MockPc.instances[1].completeGathering();
+    const { pc: pcB, dcPromise, link: answerLink } = await pAns;
+    await completePairing(pcA, answerLink);
+
+    // SCTP sobe: B recebe o DataChannel anunciado por A
+    const dcB = makeMockDc();
+    pairMockDcs(dcA, dcB);
+    pcB.ondatachannel({ channel: dcB });
+    assert.equal(await dcPromise, dcB);
+
+    // wirePeer dos dois lados: hello v2 assinado ao abrir; attach após verificar
+    const saw = {};
+    dcA.onmessage = async (e) => {
+      const m = JSON.parse(e.data);
+      if (m.type === 'hello' && (await verifyHello(ver, m)).ok) saw.A = m.from;
+      if (m.type === 'presence') saw.APresence = true;
+    };
+    dcB.onmessage = async (e) => {
+      const m = JSON.parse(e.data);
+      if (m.type === 'hello') {
+        const c = await verifyHello(ver, m);
+        if (c.ok) { saw.B = m.from; p2pTransport.addPeer(m.from, dcB, { keepalive: false }); }
+      }
+    };
+    dcA.send(JSON.stringify(await makeHello(a)));
+    dcB.send(JSON.stringify(await makeHello(b)));
+    await sleep(20);
+
+    // ambos verificaram a prova de posse do outro; B registrou A online
+    assert.equal(saw.B, a.pubKeyHex);
+    assert.equal(saw.A, b.pubKeyHex);
+    assert.equal(p2pTransport.isOnline(a.pubKeyHex), true);
+    assert.equal(p2pTransport.presenceOf(a.pubKeyHex)?.presence, 'online');
+
+    // dados fluem pelo peer registrado (B → A)
+    p2pTransport.sendToPeer(a.pubKeyHex, 'presence', { presence: 'online' });
+    await sleep(5);
+    assert.equal(saw.APresence, true);
+
+    // attachChannel em canal já aberto executa onOpen imediatamente
+    let opened = false;
+    attachChannel(pcB, dcB, { onOpen: () => { opened = true; } });
+    assert.equal(opened, true);
+  } finally { globalThis.RTCPeerConnection = save; }
 });
