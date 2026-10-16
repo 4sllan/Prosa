@@ -38,6 +38,12 @@ function markSeen(id) {
   seen.add(id);
   if (seen.size > SEEN_CAP) seen.delete(seen.values().next().value);
 }
+
+// eventos locais (peer.open/peer.closed) vão para a UI e para handlers .on()
+function emitLocal(type, payload) {
+  emit(type, payload);
+  for (const fn of handlers[type] || []) fn(payload);
+}
 export function resetTransportState() {
   seen.clear(); pendingAcks.clear(); ackWaiters.clear();
   for (const t of keepTimers.values()) clearInterval(t);
@@ -56,9 +62,13 @@ export const p2pTransport = {
     channel.onclose = () => this.dropPeer(peerId, 'channel-close');
     lastSeen.set(peerId, Date.now());
     // keepalive só em peers com hello v2 — legado v1 não responde 'ping'
-    if (keepalive) keepTimers.set(peerId, setInterval(() => this.keepalive(peerId), keepaliveMs));
+    if (keepalive) {
+      const t = setInterval(() => this.keepalive(peerId), keepaliveMs);
+      t.unref?.(); // timer de fundo não deve segurar o processo vivo
+      keepTimers.set(peerId, t);
+    }
     logDiag('peer.open', diagFingerprint(peerId));
-    emit('peer.open', { peerId });
+    emitLocal('peer.open', { peerId });
     flushPending(peerId);
   },
   keepalive(peerId) {
@@ -81,7 +91,7 @@ export const p2pTransport = {
     this.stopKeepalive(peerId);
     presences.set(peerId, { presence: 'offline', ts: Date.now() });
     logDiag('peer.closed', diagFingerprint(peerId) + ':' + reason);
-    emit('peer.closed', { peerId });
+    emitLocal('peer.closed', { peerId });
   },
   peerIds: () => [...peers.keys()].filter(id => peers.get(id).state === 'open'),
   isOnline: (peerId) => peers.get(peerId)?.state === 'open',

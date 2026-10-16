@@ -317,7 +317,7 @@ test('transport: ping recebido responde pong sem subir para a UI', async () => {
   assert.equal(sent.length, 1);
   assert.equal(sent[0].type, 'pong');
   assert.equal(sent[0].body.of, 'ping1');
-  assert.deepEqual(got, []); // ping/pong não emitem evento de UI
+  assert.deepEqual(got, ['peer.open']); // ping/pong não emitem evento extra de UI
 });
 
 test('transport: keepalive derruba peer inativo após N misses', async () => {
