@@ -3,7 +3,7 @@
     <!-- Rail de comunidades -->
     <nav class="rail">
       <img class="logo-img" :src="logoUrl" :alt="store.appName">
-      <button class="rail-item" :class="{ active: view === 'home' }" @click="goHome" title="Início">⌂</button>
+      <button class="rail-item" :class="{ active: homeSidebar }" @click="goHome" title="Início">⌂</button>
       <div class="rail-sep"></div>
       <button v-for="c in store.communities" :key="c.id" class="rail-item"
               :class="{ active: store.currentCommunity?.id === c.id }"
@@ -18,16 +18,25 @@
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="side-head">
-        <span>{{ view === 'home' ? 'Conversas' : store.currentCommunity?.name }}</span>
+        <span>{{ homeSidebar ? 'Conversas' : store.currentCommunity?.name }}</span>
         <span>
           <button v-if="view === 'community' && canManage" @click="showCommunitySettings = true" title="Configurações">⚙</button>
-          <button v-if="view === 'home'" @click="showNewGroup = true" title="Novo grupo">✎</button>
+          <button v-if="homeSidebar" @click="showNewGroup = true" title="Novo grupo">✎</button>
         </span>
       </div>
       <div class="side-body">
-        <template v-if="view === 'home'">
+        <template v-if="homeSidebar">
           <div class="cat-name">Amigos <button @click="view = 'friends'" title="Ver amigos">→</button></div>
           <div class="chan" @click="view = 'friends'" :class="{ active: view === 'friends' }"><span class="hash">☺</span>Amigos</div>
+          <div v-for="r in friends" :key="r.id" class="dm-item"
+               @click="openFriendDm(r.user.id)" @contextmenu.prevent="friendMenu(r.user.id, $event)">
+            <span class="avatar" style="width:26px;height:26px;font-size:11px">
+              <img v-if="r.user.avatarUrl" :src="fullUrl(r.user.avatarUrl)">
+              <template v-else>{{ initials(r.user.displayName) }}</template>
+              <span class="dot" :class="presenceOf(r.user.id)"></span>
+            </span>
+            {{ r.user.displayName }}
+          </div>
           <div class="cat-name">Mensagens diretas</div>
           <div v-for="d in store.dms" :key="d.id" class="dm-item" :class="{ active: activeChannel?.id === d.id }" @click="openDm(d)">
             <span class="avatar" style="width:26px;height:26px;font-size:11px">
@@ -170,14 +179,16 @@
 
     <CommunitySettings v-if="showCommunitySettings" :community="store.currentCommunity" @close="showCommunitySettings = false" />
     <UserSettings v-if="showUserSettings" @close="showUserSettings = false" />
+    <ContextMenu v-if="menu.open" :x="menu.x" :y="menu.y" :items="friendMenuItems"
+                 @select="onFriendMenuSelect" @close="menu.open = false" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { store, selectCommunity, openChannel, loadCommunities, loadDms, presenceOf, fullUrl } from '../stores.js';
-import { communities, dms, users, misc } from '../services/index.js';
+import { store, selectCommunity, openChannel, loadCommunities, loadDms, loadRelationships, presenceOf, fullUrl } from '../stores.js';
+import { communities, dms, users, misc, contacts } from '../services/index.js';
 import logoUrl from '../assets/logotipo-prosa.png';
 import { rtc, joinVoice, leaveVoice } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
@@ -187,6 +198,7 @@ import PairingPanel from '../components/PairingPanel.vue';
 import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
+import ContextMenu from '../components/ContextMenu.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -213,6 +225,8 @@ const channelTitle = computed(() => {
 });
 
 const friends = computed(() => store.relationships.filter(r => r.type === 'friend'));
+// aside identico em 'home' (Conversas) e 'friends' (Amigos/Rede P2P)
+const homeSidebar = computed(() => view.value === 'home' || view.value === 'friends');
 const canManage = computed(() => ['owner', 'admin'].includes(store.currentCommunity?.myRole));
 const myPresence = computed(() => localStorage.getItem('prosa_presence') || 'online');
 const presenceLabel = computed(() => ({ online: 'Disponível', idle: 'Ausente', dnd: 'Ocupado', invisible: 'Invisível' }[myPresence.value]));
@@ -274,6 +288,29 @@ async function openDm(d) {
 
 // FriendsPanel abriu uma DM — sai da view 'friends' para exibir o chat
 function onDmOpened() { view.value = 'home'; mobileChat.value = true; }
+
+async function openFriendDm(uid) {
+  const r = await dms.open(uid);
+  await loadDms();
+  await openChannel(r.dm.id);
+  mobileChat.value = true;
+}
+
+const menu = ref({ open: false, x: 0, y: 0, userId: null });
+const friendMenuItems = [
+  { label: 'Bloquear', value: 'block' },
+  { label: 'Remover amigo', value: 'remove', danger: true },
+];
+function friendMenu(userId, e) {
+  menu.value = { open: true, x: e.clientX, y: e.clientY, userId };
+}
+async function onFriendMenuSelect(item) {
+  try {
+    if (item.value === 'block') await contacts.block(menu.value.userId);
+    else if (item.value === 'remove') await contacts.remove(menu.value.userId);
+    await loadRelationships();
+  } catch (e) { alert(e.message); }
+}
 
 async function createCommunity() {
   if (!newCommunityName.value.trim()) return;
