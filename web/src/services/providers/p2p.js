@@ -21,13 +21,22 @@ const messagesOf = (spaceId, channelId) => {
     .filter(m => !m.deletedAt && (!channelId || m.channelId === channelId || m.channel_id === channelId))
     .sort((a, b) => a.ts - b.ts);
 };
-const toUiMessage = (spaceId, m) => ({
-  id: m.id, channelId: m.channelId || m.channel_id, spaceId,
-  author: { id: m.author, displayName: m.author.slice(0, 12) },
-  content: m.content, ts: m.ts, editedAt: m.editedAt,
-  reactions: Object.entries(m.reactions || {}).map(([emoji, users]) => ({ emoji, users })),
-  pinned: !!m.pinned, attachments: m.attachments || [],
-});
+const toUiMessage = (spaceId, m) => {
+  // replyTo chega como id cru do evento; resolve contra a projeção para o
+  // formato { id, author, content } consumido pela UI (omite se ausente).
+  const refId = typeof m.replyTo === 'string' ? m.replyTo : m.replyTo?.id;
+  const ref = refId ? spaceProjection(spaceId)?.messages.get(refId) : null;
+  return {
+    id: m.id, channelId: m.channelId || m.channel_id, spaceId,
+    author: { id: m.author, displayName: m.author.slice(0, 12) },
+    content: m.content, createdAt: m.ts, ts: m.ts, editedAt: m.editedAt,
+    replyTo: ref && !ref.deletedAt
+      ? { id: ref.id, author: ref.author.slice(0, 12), content: (ref.content || '').slice(0, 200) }
+      : null,
+    reactions: Object.entries(m.reactions || {}).map(([emoji, users]) => ({ emoji, users, count: users.length })),
+    pinned: !!m.pinned, attachments: m.attachments || [],
+  };
+};
 
 const spaceRow = (sp) => ({
   id: sp.id, name: sp.meta?.name || 'espaço', type: sp.type,
@@ -242,7 +251,7 @@ export function createP2PProvider() {
           },
         }, node().store);
         p2pTransport.broadcast(spaceId, env);
-        return { message: toUiMessage(spaceId, { ...env.body.message, author: me().pubKeyHex }) };
+        return { message: toUiMessage(spaceId, { ...env.body.message, author: me().pubKeyHex, ts: env.ts }) };
       },
       edit: async (chId, mid, body) => {
         const spaceId = findSpaceByChannel(chId);

@@ -34,6 +34,23 @@ export const store = reactive({
   bootError: null,     // mensagem de falha no bootstrap (rede, P2P, etc.)
 });
 
+// ---------- toasts ----------
+const NOTIFICATION_TTL = 6000;
+const notificationTimers = new Map();
+
+export function pushNotification(n) {
+  const item = { ...n, at: Date.now() };
+  store.notifications.push(item);
+  notificationTimers.set(item, setTimeout(() => dismissNotification(item), NOTIFICATION_TTL));
+}
+
+export function dismissNotification(n) {
+  const t = notificationTimers.get(n);
+  if (t) { clearTimeout(t); notificationTimers.delete(n); }
+  const i = store.notifications.indexOf(n);
+  if (i >= 0) store.notifications.splice(i, 1);
+}
+
 // ---------- WS ----------
 configureRealtime({
   getToken,
@@ -87,7 +104,7 @@ function dispatch(t, d) {
     case 'DM_CREATE': loadDms(); break;
     case 'RELATIONSHIP_UPDATE': loadRelationships(); break;
     case 'NOTIFY': {
-      store.notifications.push({ ...d, at: Date.now() });
+      pushNotification(d);
       if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
         new Notification(`${store.appName} — menção`, { body: `${d.message.author.username}: ${d.message.content.slice(0, 120)}` });
       }
@@ -106,7 +123,7 @@ async function dispatchP2P(t, d) {
         const r = await services.messages.list(chId);
         store.messages[chId] = r.messages;
         if (env.type === 'message.send' && env.author !== store.user?.id) {
-          store.notifications.push({ type: 'message', channelId: chId, at: Date.now(), message: env.body.message });
+          pushNotification({ type: 'message', channelId: chId, message: { ...env.body.message, author: { id: env.author, username: env.author.slice(0, 12) } } });
         }
       } else if (env.type.startsWith('channel.') || env.type.startsWith('member.') || env.type === 'space.meta') {
         loadCommunities().catch(() => {});
@@ -192,6 +209,7 @@ export async function logout() {
   setToken('');
   closeRealtime();
   store.user = null; store.communities = []; store.dms = []; store.messages = {};
+  for (const n of [...store.notifications]) dismissNotification(n);
 }
 
 export async function loadCommunities() {
@@ -240,11 +258,11 @@ export async function openChannel(channelId) {
   services.messages.markRead(channelId, {}).catch(() => {});
 }
 
-export async function sendMessage(channelId, content, { replyTo, files } = {}) {
-  let attachments = [];
+export async function sendMessage(channelId, content, { replyTo, files, attachments: forwarded } = {}) {
+  let attachments = forwarded ? [...forwarded] : [];
   if (files?.length) {
     const up = await services.files.upload(files);
-    attachments = up.files;
+    attachments = [...attachments, ...up.files];
   }
   await services.messages.send(channelId, { content, replyTo, attachments });
 }

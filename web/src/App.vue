@@ -9,7 +9,8 @@
     <ModePicker v-else-if="store.ready && store.needsModePick" />
     <router-view v-else-if="store.ready" />
     <div v-else class="empty"><div><div class="big">💬</div>Carregando {{ store.appName }}…</div></div>
-    <div v-for="n in store.notifications.slice(-3)" :key="n.at" class="toast" @click="dismiss(n)">
+    <div v-for="(n, i) in store.notifications.slice(-3)" :key="n.at" class="toast" :style="{ top: 16 + i * 84 + 'px' }" @click="dismiss(n)">
+      <button class="toast-x" title="Fechar" @click.stop="dismiss(n)">✕</button>
       <b>{{ n.message?.author?.username }}</b> mencionou você
       <div style="color:var(--fg-dim)">{{ n.message?.content?.slice(0, 90) }}</div>
     </div>
@@ -17,7 +18,7 @@
 </template>
 
 <script setup>
-import { store, bootstrap } from './stores.js';
+import { store, bootstrap, dismissNotification } from './stores.js';
 import ModePicker from './components/ModePicker.vue';
 import { watchEffect } from 'vue';
 
@@ -30,7 +31,6 @@ function retry() {
 }
 
 function dismiss(n) {
-  const i = store.notifications.indexOf(n);
-  if (i >= 0) store.notifications.splice(i, 1);
+  dismissNotification(n);
 }
 </script>

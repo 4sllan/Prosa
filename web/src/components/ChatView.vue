@@ -2,7 +2,8 @@
   <div class="chat">
     <div ref="listEl" class="msgs" @scroll="onScroll">
       <div v-if="loadingMore" style="text-align:center;color:var(--fg-dim);font-size:12px;padding:8px">Carregando…</div>
-      <div v-for="(m, i) in messages" :key="m.id" class="msg" :class="{ compact: isCompact(i) }">
+      <div v-for="(m, i) in messages" :key="m.id" class="msg" :class="{ compact: isCompact(i) }"
+           @contextmenu.prevent="msgMenu(m, $event)">
         <span class="avatar" v-if="!isCompact(i)">
           <img v-if="m.author.avatarUrl" :src="fullUrl(m.author.avatarUrl)">
           <template v-else>{{ m.author.displayName.slice(0, 2).toUpperCase() }}</template>
@@ -35,10 +36,8 @@
           <button @click="react(m, '👍')" title="Reagir">👍</button>
           <button @click="react(m, '❤️')" title="Reagir">❤️</button>
           <button @click="customReact(m)" title="Emoji">😀</button>
+          <button @click="copyMessage(m)" title="Copiar texto">📋</button>
           <button @click="replyTo = m; focusComposer()" title="Responder">↩</button>
-          <button v-if="m.author.id === store.user.id" @click="editing = m.id; editText = m.content" title="Editar">✎</button>
-          <button @click="pin(m)" title="Fixar">📌</button>
-          <button v-if="m.author.id === store.user.id || canModerate" @click="del(m)" title="Excluir">🗑</button>
         </div>
       </div>
     </div>
@@ -60,6 +59,30 @@
         {{ files.length }} arquivo(s) anexado(s) <button @click="files = []">remover</button>
       </div>
     </div>
+
+    <ContextMenu v-if="menu.open" :x="menu.x" :y="menu.y" :items="menuItems"
+                 @select="onMenuSelect" @close="menu.open = false" />
+
+    <div v-if="forwardMsg" class="modal-bg" @click.self="forwardMsg = null">
+      <div class="modal">
+        <h2>Encaminhar mensagem</h2>
+        <div class="row">
+          <label>Mensagem</label>
+          <div style="font-size:13px;color:var(--fg-dim)">{{ forwardMsg.content?.slice(0, 140) || `${forwardMsg.attachments?.length} anexo(s)` }}</div>
+        </div>
+        <div class="row">
+          <label>Destino</label>
+          <select v-model="forwardTarget">
+            <option value="" disabled>Escolha uma conversa</option>
+            <option v-for="t in forwardTargets" :key="t.id" :value="t.id">{{ t.label }}</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" @click="forwardMsg = null">Cancelar</button>
+          <button class="btn primary" :disabled="!forwardTarget" @click="confirmForward">Encaminhar</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -67,6 +90,9 @@
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { store, sendMessage, fullUrl } from '../stores.js';
 import { messages as messagesService } from '../services/index.js';
+import { messageTime } from '../services/datetime.js';
+import { copyText } from '../services/copy-text.js';
+import ContextMenu from './ContextMenu.vue';
 
 const props = defineProps({ channel: Object });
 const draft = ref(''); const files = ref([]); const replyTo = ref(null);
@@ -92,9 +118,10 @@ function nameOf(uid) {
 function isCompact(i) {
   if (i === 0) return false;
   const a = messages.value[i - 1], b = messages.value[i];
-  return a.author.id === b.author.id && b.createdAt - a.createdAt < 300_000 && !b.replyTo;
+  const dt = b.createdAt - a.createdAt;
+  return a.author.id === b.author.id && Number.isFinite(dt) && dt < 300_000 && !b.replyTo;
 }
-function fmtTime(ts) { return new Date(ts).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }); }
+function fmtTime(ts) { return messageTime(ts); }
 function fmtSize(n) { return n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB'; }
 function focusComposer() { nextTick(() => composer.value?.focus()); }
 
@@ -130,6 +157,59 @@ async function pin(m) {
   else await messagesService.pin(props.channel.id, m.id);
 }
 function react(m, emoji) { toggleReaction(m, emoji); }
+function copyMessage(m) { copyText(m.content); }
+
+const menu = ref({ open: false, x: 0, y: 0, msg: null });
+const forwardMsg = ref(null); const forwardTarget = ref('');
+
+const forwardTargets = computed(() => [
+  ...store.dms.map(d => ({ id: d.id, label: d.type === 'group_dm' ? `👥 ${d.name}` : (d.recipients[0]?.displayName || d.name || 'DM') })),
+  ...store.channels.filter(c => c.type === 'text').map(c => ({ id: c.id, label: `# ${c.name}` })),
+]);
+
+const menuItems = computed(() => {
+  const m = menu.value.msg;
+  if (!m) return [];
+  const items = [
+    { label: 'Responder', value: 'reply' },
+    { label: 'Encaminhar', value: 'forward' },
+    { label: 'Copiar texto', value: 'copy' },
+  ];
+  if (m.author.id === store.user.id) items.push({ label: 'Editar', value: 'edit' });
+  if (canModerate.value || String(props.channel.type).includes('dm')) {
+    items.push({ label: m.pinned ? 'Desafixar' : 'Fixar', value: 'pin' });
+  }
+  if (m.author.id === store.user.id || canModerate.value) {
+    items.push({ label: 'Excluir mensagem', value: 'delete', danger: true });
+  }
+  return items;
+});
+
+function msgMenu(m, e) {
+  if (e.target.closest('input, textarea, select, a')) return;
+  menu.value = { open: true, x: e.clientX, y: e.clientY, msg: m };
+}
+
+function onMenuSelect(item) {
+  const m = menu.value.msg;
+  if (!m) return;
+  if (item.value === 'reply') { replyTo.value = m; focusComposer(); }
+  else if (item.value === 'forward') { forwardMsg.value = m; forwardTarget.value = ''; }
+  else if (item.value === 'copy') copyMessage(m);
+  else if (item.value === 'edit') { editing.value = m.id; editText.value = m.content; }
+  else if (item.value === 'pin') pin(m);
+  else if (item.value === 'delete') del(m);
+}
+
+async function confirmForward() {
+  const m = forwardMsg.value;
+  if (!m || !forwardTarget.value) return;
+  const attachments = (m.attachments || []).map(a => ({ url: a.url, filename: a.filename, mime: a.mime, size: a.size }));
+  try {
+    await sendMessage(forwardTarget.value, m.content, { attachments });
+    forwardMsg.value = null;
+  } catch (e) { alert(e.message); }
+}
 function customReact(m) {
   const e = prompt('Emoji:');
   if (e) toggleReaction(m, e.trim());
@@ -152,7 +232,7 @@ async function onScroll() {
   }
 }
 
-watch(() => props.channel.id, () => { replyTo.value = null; editing.value = null; scrollBottom(); });
+watch(() => props.channel.id, () => { replyTo.value = null; editing.value = null; menu.value.open = false; forwardMsg.value = null; scrollBottom(); });
 watch(() => messages.value.length, () => scrollBottom());
 onMounted(scrollBottom);
 </script>
