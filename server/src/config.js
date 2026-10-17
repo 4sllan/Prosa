@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 // Load .env if present (no dotenv dependency)
 const envFile = join(process.cwd(), '.env');
@@ -18,7 +18,7 @@ export const config = {
   host: process.env.HOST || '0.0.0.0',
   dataDir: process.env.DATA_DIR || join(root, 'data'),
   uploadDir: process.env.UPLOAD_DIR || join(root, 'data', 'uploads'),
-  webDist: process.env.WEB_DIST || join(root, 'web', 'dist'),
+  webDist: resolve(root, process.env.WEB_DIST || join(root, 'web', 'dist')),
   env: process.env.NODE_ENV || 'development',
   sessionTtlDays: Number(process.env.SESSION_TTL_DAYS || 30),
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 25),

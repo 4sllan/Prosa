@@ -1,6 +1,6 @@
 <template>
   <div class="main" style="padding:24px;overflow-y:auto">
-    <h2 style="margin-bottom:16px">🛡 Administração</h2>
+    <h2 style="margin-bottom:16px"><Shield :size="20" aria-hidden="true" style="vertical-align:-3px" /> Administração</h2>
     <div v-if="stats" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px">
       <div class="pill" v-for="(v,k) in stats" :key="k">{{ k }}: {{ v }}</div>
     </div>
@@ -29,6 +29,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { admin } from '../services/index.js';
+import { Shield } from 'lucide-vue-next';
 
 const users = ref([]); const reports = ref([]); const stats = ref(null);
 const openReports = computed(() => reports.value.filter(r => r.status === 'open'));

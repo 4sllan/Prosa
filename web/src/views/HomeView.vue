@@ -3,7 +3,7 @@
     <!-- Rail de comunidades -->
     <nav class="rail">
       <img class="logo-img" :src="logoUrl" :alt="store.appName">
-      <button class="rail-item" :class="{ active: homeSidebar }" @click="goHome" title="Início">⌂</button>
+      <button class="rail-item" :class="{ active: homeSidebar }" @click="goHome" title="Início"><House :size="20" aria-hidden="true" /></button>
       <div class="rail-sep"></div>
       <button v-for="c in store.communities" :key="c.id" class="rail-item"
               :class="{ active: store.currentCommunity?.id === c.id }"
@@ -11,8 +11,8 @@
         <img v-if="c.iconUrl" :src="fullUrl(c.iconUrl)" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">
         <template v-else>{{ initials(c.name) }}</template>
       </button>
-      <button class="rail-item" @click="showCreate = true" title="Criar comunidade" style="color:var(--verde-mata)">＋</button>
-      <button class="rail-item" @click="showJoin = true" title="Entrar com convite">⤵</button>
+      <button class="rail-item" @click="showCreate = true" title="Criar comunidade" style="color:var(--verde-mata)"><Plus :size="20" aria-hidden="true" /></button>
+      <button class="rail-item" @click="showJoin = true" title="Entrar com convite"><LogIn :size="20" aria-hidden="true" /></button>
     </nav>
 
     <!-- Sidebar -->
@@ -20,14 +20,14 @@
       <div class="side-head">
         <span>{{ homeSidebar ? 'Conversas' : store.currentCommunity?.name }}</span>
         <span>
-          <button v-if="view === 'community' && canManage" @click="showCommunitySettings = true" title="Configurações">⚙</button>
-          <button v-if="homeSidebar" @click="showNewGroup = true" title="Novo grupo">✎</button>
+          <button v-if="view === 'community' && canManage" @click="showCommunitySettings = true" title="Configurações"><Settings :size="16" aria-hidden="true" /></button>
+          <button v-if="homeSidebar" @click="showNewGroup = true" title="Novo grupo"><SquarePen :size="16" aria-hidden="true" /></button>
         </span>
       </div>
       <div class="side-body">
         <template v-if="homeSidebar">
-          <div class="cat-name">Amigos <button @click="view = 'friends'" title="Ver amigos">→</button></div>
-          <div class="chan" @click="view = 'friends'" :class="{ active: view === 'friends' }"><span class="hash">☺</span>Amigos</div>
+          <div class="cat-name">Amigos <button @click="view = 'friends'" title="Ver amigos"><ArrowRight :size="12" aria-hidden="true" /></button></div>
+          <div class="chan" @click="view = 'friends'" :class="{ active: view === 'friends' }"><span class="hash"><Smile :size="16" aria-hidden="true" /></span>Amigos</div>
           <div v-for="r in friends" :key="r.id" class="dm-item"
                @click="openFriendDm(r.user.id)" @contextmenu.prevent="friendMenu(r.user.id, $event)">
             <span class="avatar" style="width:26px;height:26px;font-size:11px">
@@ -42,17 +42,17 @@
           <template v-for="cat in groupedChannels" :key="cat.id ?? 'uncat'">
             <div class="cat-name">
               {{ cat.name }}
-              <button v-if="canManage" @click="newChannel(cat.id)" title="Novo canal">＋</button>
+              <button v-if="canManage" @click="newChannel(cat.id)" title="Novo canal"><Plus :size="14" aria-hidden="true" /></button>
             </div>
             <template v-for="ch in cat.channels" :key="ch.id">
               <div class="chan" :class="{ active: activeChannel?.id === ch.id && ch.type === 'text' }" @click="clickChannel(ch)">
-                <span class="hash">{{ ch.type === 'voice' ? '🔊' : '#' }}</span>{{ ch.name }}
+                <span class="hash"><Volume2 v-if="ch.type === 'voice'" :size="16" aria-hidden="true" /><Hash v-else :size="16" aria-hidden="true" /></span>{{ ch.name }}
                 <span v-if="ch.type === 'voice' && voiceCount(ch.id)" style="margin-left:auto;font-size:11px;color:var(--verde-mata)">{{ voiceCount(ch.id) }}</span>
               </div>
               <div v-if="ch.type === 'voice' && store.voice[ch.id]?.length" class="voice-users">
                 <div v-for="v in store.voice[ch.id]" :key="v.userId" class="voice-user">
                   <span class="avatar" style="width:20px;height:20px;font-size:10px">{{ initials(nameOf(v.userId)) }}</span>
-                  {{ nameOf(v.userId) }} <span v-if="v.muted">🔇</span><span v-if="v.screen">🖥</span>
+                  {{ nameOf(v.userId) }} <MicOff v-if="v.muted" :size="12" aria-hidden="true" /><ScreenShare v-if="v.screen" :size="12" aria-hidden="true" />
                 </div>
               </div>
             </template>
@@ -71,9 +71,9 @@
           <div class="status">{{ presenceLabel }}</div>
         </span>
         <span class="acts">
-          <button @click="cyclePresence" :title="'Presença: ' + myPresence">●</button>
-          <button v-if="store.user?.isAdmin" @click="view = 'admin'" title="Admin">🛡</button>
-          <button @click="showUserSettings = true" title="Configurações">⚙</button>
+          <button @click="cyclePresence" :title="'Presença: ' + myPresence"><Circle :size="12" fill="currentColor" stroke="none" :style="{ color: presenceColor }" aria-hidden="true" /></button>
+          <button v-if="store.user?.isAdmin" @click="view = 'admin'" title="Admin"><Shield :size="16" aria-hidden="true" /></button>
+          <button @click="showUserSettings = true" title="Configurações"><Settings :size="16" aria-hidden="true" /></button>
         </span>
       </div>
     </aside>
@@ -81,14 +81,14 @@
     <!-- Main -->
     <main class="main">
       <template v-if="view === 'friends'">
-        <button class="friends-back" @click="goHome">&larr; Voltar às conversas</button>
+        <button class="friends-back" @click="goHome"><ArrowLeft :size="14" aria-hidden="true" /> Voltar às conversas</button>
         <PairingPanel v-if="store.mode === 'p2p'" />
         <FriendsPanel />
       </template>
       <template v-else-if="view === 'admin'"><AdminPanel /></template>
       <template v-else-if="activeChannel">
         <div class="topbar">
-          <button class="back" @click="mobileChat = false">←</button>
+          <button class="back" @click="mobileChat = false"><ArrowLeft :size="16" aria-hidden="true" /></button>
           <span class="title">{{ activeChannel.type === 'text' ? '#' : '' }} {{ channelTitle }}</span>
           <span class="topic">{{ activeChannel.topic }}</span>
           <input v-model="searchQ" placeholder="Buscar…" @input="doSearch" @keydown.esc="searchQ=''">
@@ -97,15 +97,15 @@
           <div v-for="m in searchResults.messages" :key="m.id" class="hit" @click="searchQ=''">
             <b>{{ nameOf(m.authorId) }}</b>: {{ m.content.slice(0, 90) }}
           </div>
-          <div v-for="u in searchResults.users" :key="u.id" class="hit">👤 {{ u.displayName }} (@{{ u.username }})</div>
+          <div v-for="u in searchResults.users" :key="u.id" class="hit"><UserRound :size="14" aria-hidden="true" /> {{ u.displayName }} (@{{ u.username }})</div>
           <div v-if="!searchResults.messages.length && !searchResults.users.length" class="hit">Nada encontrado</div>
         </div>
         <ChatView v-if="activeChannel.type !== 'voice'" :channel="activeChannel" />
-        <div v-else class="empty"><div><div class="big">🔊</div>Canal de voz — clique em "Entrar" na barra abaixo</div></div>
+        <div v-else class="empty"><div><div class="big"><Volume2 :size="42" aria-hidden="true" /></div>Canal de voz — clique em "Entrar" na barra abaixo</div></div>
       </template>
       <div v-else class="empty">
         <div>
-          <div class="big">🗣</div>
+          <div class="big"><Speech :size="42" aria-hidden="true" /></div>
           <b>{{ store.appName }}</b> — sua roda de conversa.<br>
           Crie uma comunidade ou entre com um convite.
         </div>
@@ -191,6 +191,7 @@ import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
 import ContextMenu from '../components/ContextMenu.vue';
+import { House, Plus, LogIn, Settings, SquarePen, ArrowRight, Smile, Volume2, Hash, MicOff, ScreenShare, Circle, Shield, ArrowLeft, UserRound, Speech } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -222,6 +223,10 @@ const homeSidebar = computed(() => view.value === 'home' || view.value === 'frie
 const canManage = computed(() => ['owner', 'admin'].includes(store.currentCommunity?.myRole));
 const myPresence = computed(() => localStorage.getItem('prosa_presence') || 'online');
 const presenceLabel = computed(() => ({ online: 'Disponível', idle: 'Ausente', dnd: 'Ocupado', invisible: 'Invisível' }[myPresence.value]));
+const presenceColor = computed(() => ({
+  online: 'var(--verde-mata)', idle: 'var(--amarelo-ipe)',
+  dnd: 'var(--coral-siriuba)', invisible: '#777',
+}[myPresence.value] || 'var(--verde-mata)'));
 
 const groupedChannels = computed(() => {
   const byCat = store.categories.map(c => ({ id: c.id, name: c.name, channels: [] }));

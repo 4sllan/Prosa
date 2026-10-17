@@ -10,17 +10,17 @@
         </span>
         <span v-else class="avatar" style="visibility:hidden"></span>
         <div style="flex:1;min-width:0">
-          <div v-if="m.replyTo" class="reply-ref">↩ {{ m.replyTo.author }}: {{ m.replyTo.content }}</div>
+          <div v-if="m.replyTo" class="reply-ref"><Reply :size="12" aria-hidden="true" /> {{ m.replyTo.author }}: {{ m.replyTo.content }}</div>
           <div v-if="!isCompact(i)" class="msg-head">
             <span class="author">{{ m.author.displayName }}</span>{{ fmtTime(m.createdAt) }}
             <span v-if="m.editedAt" style="font-size:11px">(editada)</span>
-            <span v-if="m.pinned" class="pin-tag">📌 fixada</span>
+            <span v-if="m.pinned" class="pin-tag"><Pin :size="11" aria-hidden="true" /> fixada</span>
           </div>
           <div class="msg-body" v-if="editing !== m.id">{{ m.content }}
             <template v-for="a in m.attachments" :key="a.id">
               <img v-if="a.mime?.startsWith('image/')" :src="fullUrl(a.url)" class="att" :alt="a.filename">
               <video v-else-if="a.mime?.startsWith('video/')" :src="fullUrl(a.url)" class="att" controls></video>
-              <a v-else :href="fullUrl(a.url)" class="att" target="_blank">📎 {{ a.filename }} ({{ fmtSize(a.size) }})</a>
+              <a v-else :href="fullUrl(a.url)" class="att" target="_blank"><Paperclip :size="14" aria-hidden="true" /> {{ a.filename }} ({{ fmtSize(a.size) }})</a>
             </template>
           </div>
           <div v-else style="display:flex;gap:6px;margin-top:4px">
@@ -36,8 +36,8 @@
           <button @click="react(m, '👍')" title="Reagir">👍</button>
           <button @click="react(m, '❤️')" title="Reagir">❤️</button>
           <button @click="customReact(m)" title="Emoji">😀</button>
-          <button @click="copyMessage(m)" title="Copiar texto">📋</button>
-          <button @click="replyTo = m; focusComposer()" title="Responder">↩</button>
+          <button @click="copyMessage(m)" title="Copiar texto"><Copy :size="14" aria-hidden="true" /></button>
+          <button @click="replyTo = m; focusComposer()" title="Responder"><Reply :size="14" aria-hidden="true" /></button>
         </div>
       </div>
     </div>
@@ -45,15 +45,15 @@
     <div class="typing">{{ typingText }}</div>
     <div v-if="replyTo" class="replying">
       Respondendo a <b>&nbsp;{{ replyTo.author.displayName }}</b>: {{ replyTo.content.slice(0, 60) }}
-      <button @click="replyTo = null">✕</button>
+      <button @click="replyTo = null"><X :size="14" aria-hidden="true" /></button>
     </div>
     <div class="composer">
       <div class="composer-box">
-        <button @click="fileInput.click()" title="Anexar">📎</button>
+        <button @click="fileInput.click()" title="Anexar"><Paperclip :size="16" aria-hidden="true" /></button>
         <input ref="fileInput" type="file" multiple hidden @change="files = [...$event.target.files]">
         <textarea ref="composer" v-model="draft" rows="1" :placeholder="'Conversar em ' + channelLabel"
                   @keydown.enter.exact.prevent="send" @input="notifyTyping"></textarea>
-        <button @click="send" class="btn primary" style="padding:8px 16px">➤</button>
+        <button @click="send" class="btn primary" style="padding:8px 16px"><SendHorizontal :size="16" aria-hidden="true" /></button>
       </div>
       <div v-if="files.length" style="font-size:12px;color:var(--fg-dim);padding-top:6px">
         {{ files.length }} arquivo(s) anexado(s) <button @click="files = []">remover</button>
@@ -93,6 +93,7 @@ import { messages as messagesService } from '../services/index.js';
 import { messageTime } from '../services/datetime.js';
 import { copyText } from '../services/copy-text.js';
 import ContextMenu from './ContextMenu.vue';
+import { Reply, Pin, Paperclip, Copy, X, SendHorizontal } from 'lucide-vue-next';
 
 const props = defineProps({ channel: Object });
 const draft = ref(''); const files = ref([]); const replyTo = ref(null);
