@@ -5,75 +5,124 @@
       <span class="peers" :title="`${peers.length} peer(s) online`">{{ peers.length }} peer(s)</span>
     </div>
 
-    <div class="id-card" @click="copyKey" :title="'Clique para copiar sua chave — ' + myKey">
-      <span class="label">Sua chave</span>
-      <code class="key">{{ shortKey }}</code>
-      <span class="label" style="margin-top:6px">Fingerprint (confira com o amigo)</span>
-      <code class="key">{{ myFp }}</code>
-    </div>
-
     <div class="steps">
-      <button class="btn" @click="makeOffer" :disabled="busy">Gerar convite</button>
-      <p class="hint">Envie o link ao amigo por qualquer canal.</p>
-      <textarea v-if="offerLink" readonly :value="offerLink" rows="3" @focus="$event.target.select()"/>
-
-      <div class="row">
-        <input v-model="remoteLink" placeholder="Cole o link do amigo (prosa://pair/...)" />
+      <div class="flow-heading" role="status" aria-live="polite">
+        <h4>{{ phase }}</h4>
+        <p class="hint">{{ instruction }}</p>
       </div>
-      <div class="row">
-        <button class="btn ghost" @click="answerOffer" :disabled="busy || !remoteLink">Aceitar convite</button>
-        <button class="btn ghost" @click="finish" :disabled="busy || !remoteLink || !pendingOffer">Completar</button>
+      <button v-if="pair.step === 'idle'" class="btn" @click="flow.createInvite">Criar convite</button>
+      <template v-if="pair.link">
+        <button class="btn" @click="flow.copyLink" :disabled="pair.copying">
+          {{ pair.copying ? 'Copiando…' : pair.linkType === 'offer' ? 'Copiar convite' : 'Copiar resposta' }}
+        </button>
+        <details :key="pair.link" class="link-details" :open="pair.copyError">
+          <summary>Ver link</summary>
+          <textarea readonly :value="pair.link" rows="3" aria-label="Link completo para copiar manualmente"
+                    @focus="$event.target.select()" @click="$event.target.select()"/>
+        </details>
+      </template>
+      <div v-if="canReceive" class="receive-link">
+        <label for="pairing-remote-link">Cole o link recebido</label>
+        <textarea id="pairing-remote-link" v-model="remoteLink" rows="2"
+                  placeholder="Cole aqui o convite ou a resposta do amigo" :disabled="busy"/>
+        <button class="btn" @click="flow.continueWithLink(remoteLink)" :disabled="busy || !remoteLink.trim()">Continuar</button>
       </div>
-      <textarea v-if="answerLink" readonly :value="answerLink" rows="3" @focus="$event.target.select()"/>
-      <p class="status" v-if="status && !lastPeer">{{ status }}</p>
-      <p class="warn" v-if="warn">{{ warn }}</p>
-      <p class="error" v-if="err">{{ err }}</p>
-      <p class="ok" v-if="lastPeer">Peer conectado: <code>{{ lastPeerFp || lastPeer.slice(0, 16) + '…' }}</code></p>
+      <p v-if="pair.notice" class="status" role="status" aria-live="polite">{{ pair.notice }}</p>
+      <p v-if="pair.warning" class="warn">{{ pair.warning }}</p>
+      <p v-if="pair.error" class="error" role="alert">{{ pair.error }}</p>
+      <p v-if="pair.peerId" class="ok">Peer conectado: <code>{{ lastPeerFp || pair.peerId.slice(0, 16) + '…' }}</code></p>
+      <p v-if="pair.legacy" class="warn" role="status">Handshake legado sem prova de posse — confira com o amigo o fingerprint em “Detalhes da conexão”.</p>
+      <button v-if="pair.step !== 'idle'" class="btn ghost restart" @click="restart">Recomeçar pareamento</button>
+    </div>
 
-      <div class="known" v-if="knownPeers.length">
-        <span class="label">Peers conhecidos</span>
-        <div class="krow" v-for="p in knownPeers" :key="p.pubkey">
-          <code class="key">{{ p.fingerprint || p.pubkey.slice(0, 16) + '…' }}</code>
-          <span :class="p.online ? 'ok' : 'dim'">{{ p.online ? 'online' : 'offline' }}</span>
+    <details class="connection-details">
+      <summary>Detalhes da conexão</summary>
+      <div class="connection-body">
+        <div class="id-card">
+          <div class="key-head">
+            <span id="p2p-public-key-label" class="label">Sua chave</span>
+            <button class="btn ghost" @click="copyKey" :disabled="keyCopying" :aria-busy="keyCopying"
+                    aria-describedby="p2p-public-key-label" title="Copiar sua chave pública completa">
+              {{ keyCopying ? 'Copiando…' : 'Copiar chave' }}
+            </button>
+          </div>
+          <code id="p2p-public-key" class="key">{{ myKey }}</code>
+          <span class="label" style="margin-top:6px">Fingerprint (confira com o amigo)</span>
+          <code class="key">{{ myFp }}</code>
         </div>
+        <div class="known" v-if="knownPeers.length">
+          <span class="label">Peers conhecidos</span>
+          <div class="krow" v-for="p in knownPeers" :key="p.pubkey">
+            <code class="key">{{ p.fingerprint || p.pubkey.slice(0, 16) + '…' }}</code>
+            <span :class="p.online ? 'ok' : 'dim'">{{ p.online ? 'online' : 'offline' }}</span>
+          </div>
+        </div>
+        <div class="add">
+          <input v-model="contactKey" placeholder="Chave pública do contato (hex)" aria-label="Chave pública do contato" />
+          <button class="btn" @click="addContact" :disabled="!contactKey">Adicionar contato</button>
+        </div>
+        <p v-if="contactErr" class="error" role="alert">{{ contactErr }}</p>
       </div>
-    </div>
-
-    <div class="add">
-      <input v-model="contactKey" placeholder="Chave pública do contato (hex)" />
-      <button class="btn" @click="addContact" :disabled="!contactKey">Adicionar contato</button>
-    </div>
+    </details>
+    <p class="copy-announcement" role="status" aria-live="polite" aria-atomic="true">{{ keyNotice }}</p>
+    <p v-if="keyNotice" class="status key-feedback" aria-hidden="true">{{ keyNotice }}</p>
+    <p v-if="keyErr" class="error key-feedback" role="alert">{{ keyErr }}</p>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { store } from '../stores.js';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { getP2PNode } from '../services/p2p/node.js';
 import { p2pTransport } from '../services/p2p/transport.js';
-import { createPairingOffer, acceptPairingOffer, completePairing } from '../services/p2p/pairing.js';
-import { logDiag, diagFingerprint } from '../services/p2p/diag.js';
 import { fingerprintOf } from '../services/p2p/identity.js';
-import { makeHello, verifyHello } from '../services/p2p/hello.js';
+import { createPairingFlow, isPairingBusy } from '../services/p2p/pairing-flow.js';
+import { writeClipboardText } from '../services/p2p/clipboard.js';
 import * as contacts from '../services/p2p/contacts.js';
 import { loadRelationships } from '../stores.js';
 
-const offerLink = ref('');
-const answerLink = ref('');
 const remoteLink = ref('');
 const contactKey = ref('');
-const pendingOffer = ref(null);
 const peers = ref([]);
-const lastPeer = ref('');
 const lastPeerFp = ref('');
-const busy = ref(false);
-const err = ref('');
-const warn = ref('');
-const status = ref('');
+const contactErr = ref('');
+const keyCopying = ref(false);
+const keyNotice = ref('');
+const keyErr = ref('');
+let unmounted = false;
 const knownPeers = ref([]);
+const pair = ref({});
+const subscriptions = [];
+const flow = createPairingFlow({ node: getP2PNode(), onChange: state => { pair.value = state; } });
+const busy = computed(() => isPairingBusy(pair.value.step));
+const canReceive = computed(() => ['idle', 'awaiting-response'].includes(pair.value.step));
+const phase = computed(() => ({
+  idle: 'Conecte-se a um amigo',
+  'generating-offer': 'Preparando seu convite…',
+  'awaiting-response': '1. Envie o convite',
+  'generating-answer': 'Preparando a resposta…',
+  'response-ready': '2. Devolva a resposta',
+  connecting: 'Conectando…',
+  connected: 'Conexão estabelecida',
+  error: 'Vamos tentar novamente',
+}[pair.value.step]));
+const instruction = computed(() => ({
+  idle: 'Crie um convite ou cole o link que seu amigo enviou.',
+  'generating-offer': 'Aguarde enquanto preparamos a conexão.',
+  'awaiting-response': 'Copie o convite e envie ao amigo. Depois, cole a resposta dele abaixo.',
+  'generating-answer': 'Aguarde enquanto preparamos o link de volta.',
+  'response-ready': 'Copie esta resposta e envie de volta a quem criou o convite. Aguarde ele continuar.',
+  connecting: 'Aguarde a conexão e a conferência de identidade. Se não avançar, você pode recomeçar.',
+  connected: 'Conexão de rede não significa amizade. Solicitações recebidas precisam ser aceitas em Amigos.',
+  error: 'Você pode recomeçar sem apagar contatos ou encerrar outros peers conectados.',
+}[pair.value.step]));
+watch(() => pair.value.peerId, async peerId => {
+  lastPeerFp.value = '';
+  if (!peerId) return;
+  const fingerprint = await fingerprintOf(peerId);
+  if (pair.value.peerId === peerId) lastPeerFp.value = fingerprint;
+});
 
 const myKey = computed(() => getP2PNode().identity.pubKeyHex);
-const shortKey = computed(() => myKey.value.slice(0, 20) + '…');
 const myFp = computed(() => getP2PNode().identity.fingerprint || '');
 
 
@@ -89,88 +138,40 @@ async function refreshKnown() {
 onMounted(() => {
   refreshPeers();
   refreshKnown();
-  p2pTransport.on('peer.open', refreshPeers);
-  p2pTransport.on('peer.closed', refreshPeers);
-  p2pTransport.on('peer.open', refreshKnown);
-  p2pTransport.on('peer.closed', refreshKnown);
+  for (const type of ['peer.open', 'peer.closed']) {
+    subscriptions.push(p2pTransport.on(type, refreshPeers), p2pTransport.on(type, refreshKnown));
+  }
+});
+onUnmounted(() => {
+  unmounted = true;
+  flow.dispose();
+  subscriptions.forEach(unsubscribe => unsubscribe());
 });
 
-function copyKey() { navigator.clipboard?.writeText(myKey.value).catch(() => {}); }
-
-function wirePeer(pc, dc) {
-  // O peerId real só é conhecido após o handshake 'hello' na DataChannel:
-  // cada lado envia sua pubkey ao abrir e o canal é registrado com esse id.
-  const node = getP2PNode();
-  dc.onopen = async () => {
-    logDiag('dc.open', '');
-    status.value = 'Canal aberto — aguardando handshake…';
-    // hello v2: assina 'hello|pubkey|ts' provando posse da chave anunciada
-    dc.send(JSON.stringify(await makeHello(node.identity)));
-    logDiag('hello.sent', 'v2');
-  };
-  dc.onerror = (e) => logDiag('dc.error', e.message || 'err');
-  dc.addEventListener('message', async (e) => {
-    try {
-      const m = JSON.parse(e.data);
-      if (m.type !== 'hello' || !m.from || p2pTransport.isOnline(m.from)) return;
-      logDiag('hello.recv', diagFingerprint(m.from));
-      const check = await verifyHello(node.identity, m);
-      if (!check.ok) { logDiag('hello.reject', diagFingerprint(m.from)); return; }
-      // legado v1 sem assinatura — aceita com aviso; fingerprint na UI é a conferência
-      if (check.legacy) logDiag('hello.legacy', diagFingerprint(m.from));
-      // keepalive só em hello v2 assinado — legado v1 não responde 'ping'
-      node.attachPeer(m.from, pc, dc, { keepalive: !check.legacy });
-      logDiag('peer.attach', diagFingerprint(m.from));
-      status.value = '';
-      lastPeer.value = m.from;
-      lastPeerFp.value = await fingerprintOf(m.from);
-      err.value = '';
-      refreshPeers();
-    } catch {}
-  });
-}
-
-async function makeOffer() {
-  busy.value = true; err.value = ''; warn.value = ''; status.value = 'Coletando candidatos…';
+async function copyKey() {
+  if (keyCopying.value) return;
+  keyCopying.value = true;
+  keyNotice.value = '';
+  keyErr.value = '';
   try {
-    const { pc, dc, link, timedOut } = await createPairingOffer();
-    offerLink.value = link;
-    pendingOffer.value = { pc, dc };
-    wirePeer(pc, dc);
-    status.value = 'Convite gerado — envie o link e aguarde a resposta';
-    if (timedOut) warn.value = 'Candidatos podem estar incompletos — a conexão pode falhar em redes remotas';
-  } catch (e) { err.value = e.message; status.value = ''; }
-  busy.value = false;
+    await writeClipboardText(myKey.value);
+    if (!unmounted) keyNotice.value = 'Chave pública copiada.';
+  } catch {
+    if (!unmounted) keyErr.value = 'Não foi possível copiar a chave. Tente novamente.';
+  } finally {
+    if (!unmounted) keyCopying.value = false;
+  }
 }
 
-async function answerOffer() {
-  busy.value = true; err.value = ''; warn.value = ''; status.value = 'Coletando candidatos…';
-  try {
-    const { pc, dcPromise, link, timedOut } = await acceptPairingOffer(remoteLink.value);
-    answerLink.value = link;
-    status.value = 'Resposta gerada — envie o link de volta ao amigo';
-    if (timedOut) warn.value = 'Candidatos podem estar incompletos — a conexão pode falhar em redes remotas';
-    // canal abre quando A completar o pareamento — liga os handlers então
-    dcPromise.then(dc => { status.value = 'Conectando…'; wirePeer(pc, dc); });
-  } catch (e) { err.value = e.message; status.value = ''; }
-  busy.value = false;
-}
-
-async function finish() {
-  busy.value = true; err.value = ''; status.value = 'Conectando…';
-  try {
-    await completePairing(pendingOffer.value.pc, remoteLink.value);
-  } catch (e) { err.value = e.message; status.value = ''; }
-  busy.value = false;
-}
+function restart() { flow.restart(); remoteLink.value = ''; }
 
 async function addContact() {
-  err.value = '';
+  contactErr.value = '';
   try {
     await contacts.requestContact(getP2PNode().identity, { pubkey: contactKey.value.trim() });
     contactKey.value = '';
     await loadRelationships();
-  } catch (e) { err.value = e.message; }
+  } catch (e) { contactErr.value = e.message; }
 }
 </script>
 
@@ -179,12 +180,25 @@ async function addContact() {
 .pp-head { display: flex; justify-content: space-between; align-items: center; }
 .pp-head h3 { margin: 0; font-size: 13px; text-transform: uppercase; color: var(--muted, #9aa0b4); letter-spacing: .08em; }
 .peers { font-size: 11px; color: var(--accent, #7c5cff); }
-.id-card { background: rgba(255,255,255,.05); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.connection-details { min-width: 0; border-top: 1px solid var(--border); padding-top: 4px; }
+.connection-details > summary { cursor: pointer; padding: 8px 0; color: var(--fg-dim); font-weight: 600; }
+.connection-body { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.id-card { background: rgba(255,255,255,.05); border-radius: 8px; padding: 8px 10px; }
+.key-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+.key-head .btn { flex-shrink: 0; }
+.copy-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .id-card .label { display: block; font-size: 10px; color: var(--muted, #9aa0b4); text-transform: uppercase; }
 .id-card .key { font-size: 12px; word-break: break-all; }
 .steps { display: flex; flex-direction: column; gap: 6px; }
+.flow-heading { margin-bottom: 6px; }
+.flow-heading h4 { margin: 0 0 6px; font-size: 16px; }
+.receive-link { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.receive-link label { font-weight: 600; }
+.link-details { min-width: 0; color: var(--fg-dim, #b8bfd4); }
+.link-details summary { cursor: pointer; padding: 6px 0; width: fit-content; }
+.restart { align-self: flex-start; margin-top: 8px; }
+.btn:focus-visible, summary:focus-visible { outline: 2px solid var(--fg, #fff); outline-offset: 3px; }
 .hint { margin: 0; font-size: 11px; color: var(--muted, #9aa0b4); }
-.row { display: flex; gap: 6px; }
 .btn { background: var(--accent, #7c5cff); color: #fff; border: 0; border-radius: 6px; padding: 7px 10px; cursor: pointer; font-size: 12px; }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.ghost { background: rgba(255,255,255,.08); }

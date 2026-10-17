@@ -1,13 +1,15 @@
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const store = require('./store.cjs');
 const identity = require('./identity.cjs');
+const { canUsePermission } = require('./permissions.cjs');
 
 // Dev: PROSA_DEV_URL=http://localhost:5173 carrega o Vite; senão, dist/ local.
 const DEV_URL = process.env.PROSA_DEV_URL || '';
 const API_URL = process.env.PROSA_API_URL || ''; // backend remoto configurável
 
-const ALLOWED_PERMISSIONS = new Set(['media', 'display-capture', 'notifications', 'mediaKeySystem', 'fullscreen']);
+const APP_URL = DEV_URL || pathToFileURL(path.join(__dirname, '..', 'dist', 'index.html')).href;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -28,11 +30,14 @@ function createWindow() {
     },
   });
 
-  // Permissões de mídia para WebRTC (microfone, câmera, tela)
-  win.webContents.session.setPermissionRequestHandler((_wc, permission, cb) => {
-    cb(ALLOWED_PERMISSIONS.has(permission));
+  const permissionAllowed = (wc, permission, details) => canUsePermission(permission, {
+    ...details, requestingUrl: details?.requestingUrl || wc?.getURL(),
+  }, APP_URL);
+  // Escrita de clipboard somente na pagina principal do app; leitura segue negada.
+  win.webContents.session.setPermissionRequestHandler((wc, permission, cb, details) => {
+    cb(permissionAllowed(wc, permission, details));
   });
-  win.webContents.session.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
+  win.webContents.session.setPermissionCheckHandler((wc, permission, _origin, details) => permissionAllowed(wc, permission, details));
 
   // Links externos abrem no navegador, nunca em nova janela do app
   win.webContents.setWindowOpenHandler(({ url }) => {

@@ -53,7 +53,16 @@ export function resetTransportState() {
 }
 
 export const p2pTransport = {
-  on(type, fn) { (handlers[type] ||= []).push(fn); },
+  on(type, fn) {
+    (handlers[type] ||= []).push(fn);
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      const index = handlers[type]?.indexOf(fn) ?? -1;
+      if (index !== -1) handlers[type].splice(index, 1);
+    };
+  },
 
   // ---- peers ----
   addPeer(peerId, channel, { keepalive = true } = {}) {
@@ -163,7 +172,7 @@ export const p2pTransport = {
 
   // ---- mensagens de controle (não persistidas) ----
   sendToPeer(peerId, type, body, spaceId = '*') {
-    this.send(peerId, {
+    return this.send(peerId, {
       v: 1, id: `ctl:${type}:${me?.id}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
       spaceId, from: me?.id, to: peerId, type, ts: Date.now(), body,
     });

@@ -92,11 +92,13 @@ export function createP2PProvider() {
 
     contacts: {
       list: async () => ({
-        relationships: (await contacts.listContacts()).map(c => ({
-          id: c.pubkey,
-          user: { id: c.pubkey, username: c.profile?.username || c.pubkey.slice(0, 12), displayName: c.profile?.displayName || c.pubkey.slice(0, 12), avatarUrl: c.profile?.avatarUrl },
-          type: { friend: 'friend', incoming: 'incoming', outgoing: 'outgoing', blocked: 'blocked' }[c.state] || 'incoming',
-        })).filter(r => r.type !== 'removed'),
+        relationships: (await contacts.listContacts())
+          .filter(c => ['friend', 'incoming', 'outgoing', 'blocked'].includes(c.state))
+          .map(c => ({
+            id: c.pubkey,
+            user: { id: c.pubkey, username: c.profile?.username || c.pubkey.slice(0, 12), displayName: c.profile?.displayName || c.pubkey.slice(0, 12), avatarUrl: c.profile?.avatarUrl },
+            type: c.state,
+          })),
       }),
       request: async (pubkey) => contacts.requestContact(me(), { pubkey }),
       accept: async (peerId) => contacts.acceptContact(me(), peerId),

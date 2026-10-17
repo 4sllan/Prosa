@@ -33,7 +33,7 @@ npm run dev:web      # Vite em :5173 (proxy para a API)
 ## Testes
 
 ```bash
-npm test             # 12 testes: auth, permissões, mensagens, convites, DM, WS, busca
+npm test             # 13 testes: auth, permissões, mensagens, convites, DM, WS, busca
 ```
 
 ## O que está implementado
@@ -148,8 +148,10 @@ Arquitetura e plano completos: `docs/specs/p2p-architecture.md` e `docs/specs/p2
 - **Identidade** — Ed25519 por instalação. No Electron a chave privada fica no processo main (`web/desktop/identity.cjs`, arquivo `identity.key` em `userData/p2p/` com modo `0600`); o renderer só recebe pubkey/assinaturas via IPC (`p2p:pubkey`, `p2p:sign`, `p2p:fingerprint`). No navegador em dev, cai para WebCrypto + `localStorage` (marcado `devOnly` — não é armazenamento de produção).
 - **Persistência local** — `web/desktop/store.cjs` com backend `node:sqlite` → `sql.js` → journal JSON, acessado pelo renderer via IPC tipada `p2p:store` (ops nomeadas, nunca SQL arbitrário). Tabelas: `events`, `projections`, `contacts`, `files`, `kv`.
 - **Eventos assinados** — envelope `{v,id,spaceId,author,seq,type,ts,body,sig}` com `id = spaceId:author:seq` e assinatura Ed25519 sobre JSON canônico. Seq monotônica por autor/espaço dá dedupe e ordenação; regras LWW/permissões em `p2p/converge.js` (só o autor edita; só admin remove membro/canal).
-- **Pareamento** — link manual `prosa://pair/<offer>`/`prosa://pair/<answer>` gerado no painel "Rede P2P" (visão Amigos). Um lado gera convite, o outro cola e devolve a resposta; o DataChannel abre e envia `hello` com a pubkey — que vira o `peerId`.
-- **Transporte** — `p2p/transport.js`: fan-out por espaço, dedupe por event-id, ACKs com `waitAcks`, fila offline reenviada ao reconectar. Canais: controle efêmero (`presence`, `typing`, `voice_state`, `signal`) e eventos assinados persistidos.
+- **Pareamento guiado** — no painel "Rede P2P" (visão Amigos), um lado usa **Criar convite** → **Copiar convite**; o outro cola em "Cole o link recebido" e escolhe **Continuar**, depois usa **Copiar resposta**; o criador cola a resposta e escolhe **Continuar**. Os links continuam `prosa://pair/<payload>` (`offer`/`answer`), com validação antes de operar no WebRTC, tolerância a espaços/quebras de linha e alternativa "Ver link" para copia manual. "Peer conectado" indica só rede: após o handshake, o criador do convite envia a solicitação; ele aparece em "Enviadas" e o amigo em "Recebidas". Aceitar a amizade move ambos para "Amigos", sem confundir isso com aceitar o pareamento.
+- **Chave e detalhes** — "Detalhes da conexão" recolhe chave pública completa, fingerprint, peers conhecidos e adição manual por chave. **Copiar chave** copia a chave integral com confirmação/erro e não exige leitura do clipboard.
+- **Cancelamento** — cada item em "Enviadas" permite **Cancelar convite**, sem desconectar o peer nem revogar um link SDP já copiado. No P2P, o tombstone local é persistido e `contact_remove` é enviado pela fila de controle existente.
+- **Transporte** — `p2p/transport.js`: fan-out por espaço, dedupe por event-id, ACKs com `waitAcks`, fila offline reenviada ao reconectar. Canais: controle efêmero (`presence`, `typing`, `voice_state`, `signal`) e eventos assinados persistidos. A fila de controle é em memória: após reiniciar o app ainda offline, um cancelamento removido localmente pode deixar a pendência antiga no outro lado; a UI não afirma entrega remota confirmada nesse caso.
 - **Sync** — ao conectar, cada lado troca `maxSeq` por autor/espaço (`sync_req`/`sync_event`/`sync_done`); eventos faltantes são revalidados (assinatura + seq) antes de entrar no log.
 - **Espaços** — DM 1:1 (`dm:`), grupo e comunidade (`cm:`) com `space.genesis` assinado; convite = genesis codificado em base64 (`communities.createInvite`/`acceptInvite`).
 - **Voz/vídeo/tela** — mesmo mesh WebRTC; `voice_state`/`signal` trafegam no canal de controle P2P e o provider sintetiza `VOICE_STATE` para o `rtc.js` existente.
@@ -159,4 +161,4 @@ Arquitetura e plano completos: `docs/specs/p2p-architecture.md` e `docs/specs/p2
 - **Conexão** — `hello` assinado (Ed25519, prova de posse), fingerprint conferível no painel, keepalive `ping`/`pong` a cada 25 s mantendo NAT mapping, `restartIce` automático em queda transitória e lista de peers conhecidos persistida para re-pareamento.
 - **Testes** — `cd web && npm test` (envelope, dedupe/fan-out/ack, eventlog/LWW, spaces, sync, pareamento/keepalive).
 
-Limitações do experimental: sem relay/mailbox para peers offline, sem discovery automático (pareamento manual), convites de comunidade via link compartilhado manualmente, sem TURN embutido (configure o seu via `prosa_ice`/`VITE_ICE_SERVERS_JSON`).
+Limitações do experimental: sem relay/mailbox para peers offline, sem discovery automático (pareamento manual), convites de comunidade via link compartilhado manualmente, fila de controle offline não persistente após reinício e sem TURN embutido (configure o seu via `prosa_ice`/`VITE_ICE_SERVERS_JSON`).

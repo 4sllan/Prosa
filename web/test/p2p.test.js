@@ -289,7 +289,7 @@ test('pairing: timedOut propagado quando gathering não completa', async () => {
     const res = await createPairingOffer({ timeoutMs: 30 });
     assert.equal(res.timedOut, true); // aviso de candidatos parciais na UI
     assert.match(res.link, /^prosa:\/\/pair\//); // link ainda é gerado, com aviso
-    const answer = await acceptPairingOffer('prosa://pair/' + encodePairPayload({ t: 'offer', sdp: 'x' }), { timeoutMs: 30 });
+    const answer = await acceptPairingOffer('prosa://pair/' + encodePairPayload({ v: 1, t: 'offer', sdp: 'x' }), { timeoutMs: 30 });
     assert.equal(answer.timedOut, true);
   } finally { globalThis.RTCPeerConnection = save; }
 });

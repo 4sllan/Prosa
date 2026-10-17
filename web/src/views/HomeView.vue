@@ -1,5 +1,5 @@
 <template>
-  <div class="shell" :class="{ 'chat-open': mobileChat }">
+  <div class="shell" :class="{ 'chat-open': mobileChat || view === 'friends' }">
     <!-- Rail de comunidades -->
     <nav class="rail">
       <img class="logo-img" :src="logoUrl" :alt="store.appName">
@@ -80,6 +80,7 @@
     <!-- Main -->
     <main class="main">
       <template v-if="view === 'friends'">
+        <button class="friends-back" @click="goHome">&larr; Voltar às conversas</button>
         <PairingPanel v-if="store.mode === 'p2p'" />
         <FriendsPanel @open-dm="onDmOpened" />
       </template>
@@ -341,3 +342,10 @@ watch(() => route.params.channelId, async (chId) => {
   if (chId) { store.activeChannelId = chId; await openChannel(chId); }
 }, { immediate: true });
 </script>
+
+<style scoped>
+.friends-back { display: none; }
+@media (max-width: 700px) {
+  .friends-back { display: block; align-self: flex-start; padding: 12px; color: var(--fg-dim); }
+}
+</style>
