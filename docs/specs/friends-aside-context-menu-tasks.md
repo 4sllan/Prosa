@@ -1,7 +1,8 @@
 # Tasks — Aside consistente, lista de amigos e menu de contexto
 
-- Status geral: em execucao (T1-T4 implementadas, aguardando validacao
-  manual; T5 concluida; T6 pendente — validacao manual A↔B pelo usuario)
+- Status geral: em execucao (T1-T5 concluidas/concluida
+  manual; T6 concluida manual — instancias serao relancadas
+  apos T7; T7 em andamento, revisao R2)
 - Spec de referencia: `docs/specs/friends-aside-context-menu.md` (aprovada em 2026-10-17)
 - Ordem de execucao: T1 -> T2 -> T3 -> T4 -> T5 (T3 nao depende de T1/T2,
   mas a ordem listada e a recomendada; cada task exige autorizacao
@@ -9,7 +10,7 @@
 
 ## T1 - Componente de menu de contexto + helper de posicionamento
 
-- Status: aguardando validacao
+- Status: concluida
 - Requisitos/aceite: RF-05, RNF-01, RNF-02, RNF-03, CA-03, CA-07
 - Dependencias: nenhuma
 - Escopo e arquivos provaveis:
@@ -43,7 +44,7 @@
 
 ## T2 - FriendsPanel: remover botoes e ligar menu de contexto + clique abre DM
 
-- Status: aguardando validacao
+- Status: concluida
 - Requisitos/aceite: RF-04, RF-05, RF-06, CA-03, CA-04, CA-05, CA-06
 - Dependencias: T1
 - Escopo e arquivos provaveis: `web/src/components/FriendsPanel.vue`.
@@ -72,7 +73,7 @@
 
 ## T3 - Aside identico nas views "Conversas" e "Amigos/Rede P2P"
 
-- Status: aguardando validacao
+- Status: concluida
 - Requisitos/aceite: RF-01, RNF-04, CA-01
 - Dependencias: nenhuma
 - Escopo e arquivos provaveis: `web/src/views/HomeView.vue`.
@@ -95,7 +96,7 @@
 
 ## T4 - Lista de amigos no aside (abre DM + menu de contexto)
 
-- Status: aguardando validacao
+- Status: concluida
 - Requisitos/aceite: RF-02, RF-03, RF-07, RF-08, CA-02, CA-03, CA-04, CA-05
 - Dependencias: T1, T3
 - Escopo e arquivos provaveis: `web/src/views/HomeView.vue`.
@@ -195,4 +196,72 @@
   (carregam `dist/`); evidencias = resultado reportado pelo usuario.
 - Criterio de conclusao: checklist percorrido pelo usuario sem falhas;
   itens nao verificaveis ou reprovados ficam registrados como pendencia.
-- Evidencias: a preencher durante a execucao
+- Evidencias: `npm run build` ok. Duas instancias lancadas com
+  `env -u ELECTRON_RUN_AS_NODE npx electron . --user-data-dir=/tmp/prosa-a`
+  e `/tmp/prosa-b` (a var `ELECTRON_RUN_AS_NODE=1` herdada do ambiente
+  fazia o Electron rodar como Node puro — contornada com `env -u`).
+  Cada instancia criou `p2p/identity.key` + `local.json` proprios;
+  backend `journal`. Log mostra TURN `free.expressturn.com` sem
+  resolucao DNS — irrelevante para A↔B em localhost (candidatos host).
+  Aguardando o usuario percorrer o roteiro e reportar.
+
+## T7 - R2: remover secao "Amigos" do painel e "Mensagens diretas" do aside
+
+- Status: em andamento
+- Requisitos/aceite: RF-01, RF-03, RF-04, RF-05, RF-07, RF-09, CA-01, CA-03, CA-05
+- Dependencias: T2, T4 (ajusta o que implementaram)
+- Escopo e arquivos provaveis: `web/src/components/FriendsPanel.vue`
+  (remove secao Amigos, menu do painel, openDm/emit e handlers orfaos,
+  mantendo Adicionar/Recebidas/Enviadas/Bloqueados);
+  `web/src/views/HomeView.vue` (remove secao "Mensagens diretas" e
+  listener `@open-dm` orfao).
+- Implementacao: painel deixa de listar amigos — gerenciamento do vinculo
+  passa a existir apenas via menu de contexto do aside; aside sem a
+  secao de DMs, conversas acessiveis clicando nos amigos.
+- Testes e comandos de validacao: `npm --prefix web test`; `npm run
+  build`; `git diff --check`; rebuild + relancamento das instancias A/B
+  para a validacao manual de T6.
+- Criterio de conclusao: painel sem a secao "Amigos"; aside sem
+  "Mensagens diretas"; clique no amigo abre a conversa; build e suite
+  verdes.
+- Evidencias: `FriendsPanel.vue` — secao "Amigos" removida junto com
+  ContextMenu/menu/openDm/emit e funcoes block/remove orfas; mantidas
+  Adicionar, Recebidas, Enviadas, Bloqueados. `HomeView.vue` — secao
+  "Mensagens diretas" removida do aside (header + itens); `openDm` e
+  `onDmOpened`/`@open-dm` orfaos removidos; `openFriendDm` agora tambem
+  sai da view 'friends' para exibir o chat. `npm --prefix web test`:
+  220/220; `npm run build`: ok; `git diff --check`: limpo. Instancias
+  A/B relancadas com o novo build (mesmos `--user-data-dir`,
+  identidades preservadas). Aguardando validacao manual de T6.
+
+## T8 - R3: desbloquear restaura a amizade (volta a secao Amigos do aside)
+
+- Status: concluida
+- Requisitos/aceite: RF-10, CA-08
+- Dependencias: T7 (apos a R2, "Bloqueados" e o aside sao as superficies)
+- Escopo e arquivos provaveis: `web/src/services/p2p/contacts.js`
+  (`unblockContact` grava `friend` em vez de `removed`);
+  `server/src/routes/users.js` (`DELETE .../block` restaura `accepted` +
+  `RELATIONSHIP_UPDATE` ao outro lado); `web/test/friends-sync.test.js`
+  (ajusta expectativa); `server/test/api.test.js` (cobre block→unblock).
+- Implementacao: conforme RF-10 — restauracao direta de `friend`/
+  `accepted` e notificacao do outro lado no modo server.
+- Testes e comandos de validacao: `node --test
+  web/test/friends-sync.test.js`; `npm --prefix web test`; `npm test`
+  (suite do servidor); `npm run build`; `git diff --check`; rebuild +
+  relancamento das instancias A/B mantendo os perfis para o usuario
+  validar o desbloquear.
+- Criterio de conclusao: desbloquear tira de "Bloqueados" e devolve o
+  amigo ao aside sem reload nos dois modos; suites verdes.
+- Evidencias: friends-sync 3/3; web 220/220; server 14/14 (novo
+  teste block/unblock); build ok; diff-check limpo. Instancias A/B
+  relancadas com perfis preservados — validacao manual do desbloquear
+  pendente.
+
+## Validacao manual final
+
+Roteiro A/B executado pelo usuario nas instancias Electron com perfis
+zerados e build limpo (cache `web/dist` + `.vite` removidos):
+pareamento -> aceite -> amigo no aside -> bloquear -> desbloquear
+(***retorno imediato a secao Amigos do aside***) -> abrir DM ->
+mensagens A<->B. Resultado reportado: "funcionou".

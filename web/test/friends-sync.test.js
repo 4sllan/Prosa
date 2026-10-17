@@ -65,7 +65,7 @@ test('A->B: pedido -> recebida -> aceite -> amigo na lista consumida pelo aside'
   assert.deepEqual((await friendsList()).sort(), [aId, bId].sort());
 });
 
-test('A->B: bloquear some da lista de amigos so no lado local', async () => {
+test('A->B: bloquear some da lista local e desbloquear restaura a amizade', async () => {
   await store.putContact({ pubkey: bId, state: 'friend', profile: { displayName: 'Bia' }, updatedAt: 1 });
   await store.putContact({ pubkey: aId, state: 'friend', profile: { displayName: 'Ana' }, updatedAt: 1 });
 
@@ -74,9 +74,10 @@ test('A->B: bloquear some da lista de amigos so no lado local', async () => {
   assert.ok(!(await friendsList()).includes(bId));
   assert.equal(await typeOf(aId), 'friend');           // lado de B permanece amigo
 
-  await contacts.unblockContact(bId);
-  assert.equal(await typeOf(bId), null);               // desbloquear nao restaura amizade
-  assert.equal((await store.getContact(bId)).state, 'removed');
+  await contacts.unblockContact(bId);                  // "Desbloquear": volta a aparecer no aside
+  assert.equal(await typeOf(bId), 'friend');
+  assert.equal((await store.getContact(bId)).state, 'friend');
+  assert.ok((await friendsList()).includes(bId));
 });
 
 test('A->B: remover amigo propaga removed e esvazia as duas pontas', async () => {

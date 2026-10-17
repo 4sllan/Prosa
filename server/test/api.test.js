@@ -140,6 +140,49 @@ test('amigos + DM', async () => {
   assert.ok(list.body.dms.some(d => d.id === dmId));
 });
 
+test('bloquear esconde amizade e desbloquear restaura como amiga nos dois lados', async (t) => {
+  const pair = [];
+  for (const name of ['block_a', 'block_b']) {
+    const r = await api('/api/auth/register', {
+      method: 'POST',
+      body: { username: name, email: `${name}@example.test`, password: 'block-test-password' },
+    });
+    assert.equal(r.status, 201);
+    pair.push(r.body);
+  }
+  const [ua, ub] = pair;
+  const list = async token => (await api('/api/users/@me/relationships', { token })).body.relationships;
+  const bPath = `/api/users/@me/relationships/${ub.user.id}/block`;
+
+  await api('/api/users/@me/relationships', { method: 'POST', token: ua.token, body: { username: 'block_b' } });
+  await api(`/api/users/@me/relationships/${ua.user.id}/accept`, { method: 'POST', token: ub.token });
+  assert.equal((await list(ua.token))[0].type, 'friend');
+  assert.equal((await list(ub.token))[0].type, 'friend');
+
+  const ws = new WebSocket(`ws://localhost:${port}/ws?token=${ub.token}`);
+  t.after(() => ws.terminate());
+  const update = new Promise((res, rej) => {
+    const timer = setTimeout(() => rej(new Error('timeout RELATIONSHIP_UPDATE')), 5000);
+    ws.on('message', raw => {
+      const ev = JSON.parse(raw);
+      if (ev.t === 'RELATIONSHIP_UPDATE') { clearTimeout(timer); res(ev); }
+    });
+  });
+  await new Promise(res => {
+    ws.on('message', function f(raw) {
+      if (JSON.parse(raw).t === 'READY') { ws.off('message', f); res(); }
+    });
+  });
+
+  assert.equal((await api(bPath, { method: 'POST', token: ua.token })).status, 200);
+  assert.equal((await list(ua.token))[0].type, 'blocked');
+
+  assert.equal((await api(bPath, { method: 'DELETE', token: ua.token })).status, 200);
+  assert.equal((await update).t, 'RELATIONSHIP_UPDATE');
+  assert.equal((await list(ua.token))[0].type, 'friend');
+  assert.equal((await list(ub.token))[0].type, 'friend');
+});
+
 test('ban impede reentrada', async () => {
   const betoId = (await api('/api/users/@me', { token: beto })).body.user.id;
   let r = await api(`/api/communities/${cid}/members/${betoId}/ban`, { method: 'POST', token: ana, body: { reason: 'teste' } });

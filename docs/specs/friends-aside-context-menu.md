@@ -1,9 +1,20 @@
 # Aside consistente, lista de amigos e menu de contexto
 
-- Status: aprovada
+- Status: aprovada (R2 — revisao de escopo)
 - Data: 2026-10-17
 - Aprovacao: "continuar" em 2026-10-17, apos apresentacao da spec com as
   decisoes ja registradas; autoriza a criacao das tasks, nao a execucao.
+- Revisao R2 (2026-10-17): a pedido do usuario, a lista "Amigos" sai do
+  painel (amigos vivem so no aside) e a secao "Mensagens diretas" sai do
+  aside por completo. Esclarecido com o usuario: manter "Adicionar",
+  "Recebidas", "Enviadas" e "Bloqueados" no painel; remover a secao
+  inteira de DMs (navegacao para conversas passa a ser via amigos).
+  RF-04, RF-05, RF-06 e CA-03 reescritos; RF-09 novo.
+- Revisao R3 (2026-10-17): bug reportado na validacao manual — ao
+  desbloquear, o contato sumia em vez de voltar aos amigos. RF-10 novo:
+  desbloquear restaura a amizade nos dois modos. Antes, `unblockContact`
+  (P2P) gravava `removed` e `DELETE .../block` (server) apagava a linha
+  de `friendships`.
 - Origem: pedido do usuario para ajustar o aside e o gerenciamento de amigos
   na rede P2P, com fluxo SDD conforme `.devin/sdd.md`.
 - Decisoes registradas na analise (Fase 1), respondidas pelo usuario:
@@ -45,13 +56,16 @@ Referencias existentes:
 Inclui:
 
 - Renderizacao identica do aside nas views `home` e `friends`.
-- Lista de amigos no aside, sob a secao "Amigos".
-- Abertura de DM ao clicar em um amigo (no aside e no `FriendsPanel`).
-- Remocao dos botoes "Mensagem", "Bloquear" e "Remover" da secao Amigos do
-  `FriendsPanel`, substituidos por menu de contexto com "Bloquear" e
-  "Remover amigo".
-- Componente de menu de contexto reutilizavel, aplicado tambem aos itens de
-  amigo do aside (mesmas acoes), para consistencia.
+- Lista de amigos no aside, sob a secao "Amigos" — unica lista de amigos
+  da interface e ponto de acesso as conversas 1:1.
+- Abertura de DM ao clicar em um amigo no aside.
+- (R2) Remocao completa da secao "Amigos" do `FriendsPanel` (a lista de
+  amigos sai do painel); mantidas "Adicionar", "Recebidas", "Enviadas" e
+  "Bloqueados".
+- (R2) Remocao completa da secao "Mensagens diretas" do aside (cabecalho
+  e itens de DM).
+- Menu de contexto com "Bloquear" e "Remover amigo" nos itens de amigo
+  do aside — unico ponto de gerenciamento de amizade.
 - Helper puro de posicionamento do menu (clamping no viewport) com teste
   unitario, seguindo o padrao de testes de services do projeto.
 - Validacao: suite web, build, `git diff --check` e roteiro manual.
@@ -65,6 +79,9 @@ Fora de escopo:
 - Mudancas nas secoes Recebidas, Enviadas e Bloqueados, no fluxo de
   pareamento, no `memberMenu` de comunidades nem em outras views.
 - Novos itens no menu de contexto alem de "Bloquear" e "Remover amigo".
+- (R2) Novo ponto de acesso para DMs de grupo no aside: com a remocao da
+  secao, grupos deixam de ter entrada visivel — consequencia aceita da
+  decisao do usuario, sem criar navegacao substituta nesta spec.
 - Internacionalizacao, temas novos ou reformulacao visual global.
 
 ## 3. Modos, plataformas e semantica
@@ -73,7 +90,9 @@ Fora de escopo:
 | --- | --- | --- |
 | Aside identico em `home` e `friends` | Sim | Sim |
 | Lista de amigos no aside | Sim | Sim |
-| Menu de contexto no amigo | Sim | Sim |
+| Secao "Amigos" no painel | Nao (R2) | Nao (R2) |
+| Secao "Mensagens diretas" no aside | Nao (R2) | Nao (R2) |
+| Menu de contexto no amigo do aside | Sim | Sim |
 | Bloquear | `contacts.block` (backend) | `blockContact` (local) |
 | Remover amigo | `contacts.remove` (backend + WS) | `removeContact` (tombstone + `contact_remove`) |
 
@@ -90,10 +109,10 @@ Fora de escopo:
 
 ### Funcionais
 
-- **RF-01:** O aside deve renderizar estrutura e aparencia identicas nas
-  views `home` e `friends`: cabecalho "Conversas" com o botao "Novo grupo",
-  secao "Amigos" com o item de navegacao, lista de amigos, secao
-  "Mensagens diretas" com as DMs, `VoiceBar` e barra de usuario. O item
+- **RF-01 (R2):** O aside deve renderizar estrutura e aparencia identicas
+  nas views `home` e `friends`: cabecalho "Conversas" com o botao "Novo
+  grupo", secao "Amigos" com o item de navegacao e a lista de amigos,
+  `VoiceBar` e barra de usuario — sem a secao "Mensagens diretas". O item
   "Amigos" permanece destacado (`.active`) enquanto `view === 'friends'`.
 - **RF-02:** O aside deve listar cada relacionamento `type === 'friend'`
   sob a secao "Amigos", abaixo do item de navegacao, exibindo avatar com
@@ -102,26 +121,40 @@ Fora de escopo:
   remotos adicionam o amigo; bloqueios e remocoes o retiram.
 - **RF-03:** Clicar em um amigo no aside deve abrir (ou criar, sob demanda)
   a DM correspondente via `dms.open` + `loadDms` + `openChannel` e exibir a
-  conversa, reutilizando o fluxo atual do botao "Mensagem".
-- **RF-04:** Na secao Amigos do `FriendsPanel`, remover os botoes
-  "Mensagem", "Bloquear" e "Remover". O item deve abrir a DM com clique
-  esquerdo (emitindo `open-dm` como hoje) e abrir o menu de contexto com
-  o botao direito (`@contextmenu.prevent`).
-- **RF-05:** O menu de contexto deve conter exatamente duas opcoes:
-  "Bloquear" e "Remover amigo". Deve abrir na posicao do cursor, permanecer
-  dentro do viewport (clamping) e fechar ao escolher uma opcao, pressionar
-  Esc, clicar fora, rolar ou redimensionar a janela.
-- **RF-06:** "Bloquear" deve chamar `contacts.block(userId)` e
+  conversa — e o unico ponto de entrada para conversas 1:1.
+- **RF-04 (R2):** Remover completamente a secao "Amigos" do `FriendsPanel`
+  (titulo, contador e itens), junto com os botoes de acao e o menu de
+  contexto do painel. Manter "Adicionar por nome de usuario", "Recebidas",
+  "Enviadas" e "Bloqueados" inalterados.
+- **RF-05 (R2):** O menu de contexto, exibido somente nos itens de amigo
+  do aside, deve conter exatamente duas opcoes: "Bloquear" e
+  "Remover amigo". Deve abrir na posicao do cursor, permanecer dentro do
+  viewport (clamping) e fechar ao escolher uma opcao, pressionar Esc,
+  clicar fora, rolar ou redimensionar a janela.
+- **RF-06 (R2):** "Bloquear" deve chamar `contacts.block(userId)` e
   "Remover amigo" deve chamar `contacts.remove(userId)`, ambos seguidos de
-  `loadRelationships()`. Falhas devem ser exibidas na area de erro do
-  `FriendsPanel` (modo painel) sem fechar o menu de forma silenciosa.
-- **RF-07:** O mesmo menu de contexto deve ser oferecido nos itens de amigo
-  do aside, com as mesmas duas acoes e a mesma sincronizacao de estado.
+  `loadRelationships()`. Falhas devem ser exibidas (padrao `alert` do
+  HomeView) sem fechar o menu de forma silenciosa.
+- **RF-07:** O menu de contexto do aside e o unico ponto de
+  gerenciamento do vinculo (bloquear/remover), dado que o painel nao
+  lista mais amigos; "Bloqueados" continua exibindo "Desbloquear".
 - **RF-08:** Aceitar um convite em "Recebidas" (modo P2P ou servidor) deve
   fazer o novo amigo aparecer na lista do aside imediatamente, sem reload
   nem acao adicional, valendo-se da atualizacao reativa ja existente de
   `store.relationships` (`loadRelationships` local e eventos
   `RELATIONSHIP_UPDATE`/`contacts.changed` remotos).
+- **RF-09 (R2):** O aside nao deve exibir a secao "Mensagens diretas" nem
+  itens de DM; a navegacao para conversas ocorre via itens de amigo (RF-03)
+  e canais de comunidade.
+- **RF-10 (R3):** Desbloquear um contato deve restaurar a amizade: o
+  contato sai de "Bloqueados" e volta a aparecer na secao "Amigos" do
+  aside, permitindo abrir a conversa, sem reiniciar nem recarregar.
+  P2P: `unblockContact` grava `friend` (o bloqueio e local — o outro lado
+  nunca deixou de ver `friend`). Server: `DELETE .../block` restaura
+  `accepted` na linha compartilhada e notifica o outro via
+  `RELATIONSHIP_UPDATE`. A restauracao usa `friend`/`accepted`
+  independentemente do estado anterior ao bloqueio — a UI so oferece
+  bloqueio sobre amigos.
 
 ### Nao funcionais
 
@@ -181,13 +214,14 @@ Privacidade preservada: bloqueio P2P continua local e nao notifica o peer.
 
 | ID | Verificacao | Requisitos |
 | --- | --- | --- |
-| CA-01 | Nas views "Conversas" e "Amigos/Rede P2P", o aside exibe a mesma estrutura e aparencia (cabecalho, secoes, DMs, userbar) | RF-01 |
+| CA-01 | Nas views "Conversas" e "Amigos/Rede P2P", o aside exibe a mesma estrutura e aparencia (cabecalho, secao Amigos, userbar) — sem "Mensagens diretas" | RF-01, RF-09 |
 | CA-02 | Ao aceitar em "Recebidas", o amigo aparece na secao "Amigos" do aside sem reload; o mesmo vale para aceite remoto | RF-02, RF-08 |
-| CA-03 | Botao direito sobre um amigo (painel e aside) abre menu com "Bloquear" e "Remover amigo" no cursor, dentro do viewport; Esc, clique fora, scroll e resize fecham | RF-04, RF-05, RF-07, RNF-02 |
-| CA-04 | "Bloquear" move o contato para "Bloqueados" e o remove do aside e da lista; "Remover amigo" o retira de ambos sem recarregar | RF-06, RF-02 |
-| CA-05 | Clique esquerdo em um amigo (painel e aside) abre/exibe a DM correspondente | RF-03, RF-04 |
-| CA-06 | O comportamento e identico nos modos `server` e `p2p`, com as acoes corretas de cada provider | RF-04–RF-08 |
+| CA-03 (R2) | Botao direito sobre um amigo no aside abre menu com "Bloquear" e "Remover amigo" no cursor, dentro do viewport; Esc, clique fora, scroll e resize fecham; o painel nao exibe lista de amigos | RF-04, RF-05, RF-07, RNF-02 |
+| CA-04 | "Bloquear" move o contato para "Bloqueados" e o remove do aside; "Remover amigo" o retira sem recarregar | RF-06, RF-02 |
+| CA-05 | Clique esquerdo em um amigo no aside abre/exibe a DM correspondente | RF-03 |
+| CA-06 | O comportamento e identico nos modos `server` e `p2p`, com as acoes corretas de cada provider | RF-04–RF-09 |
 | CA-07 | `npm --prefix web test` e `npm run build` passam; `git diff --check` limpo; helper de posicionamento coberto por teste | RNF-03 |
+| CA-08 (R3) | Ao desbloquear, o contato some de "Bloqueados" e reaparece na secao "Amigos" do aside sem reload, nos dois modos; no server, o outro usuario tambem recebe `RELATIONSHIP_UPDATE` | RF-10 |
 
 ## 10. Estrategia de validacao, riscos e decisoes
 

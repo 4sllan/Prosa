@@ -37,35 +37,22 @@
       </button>
     </div>
 
-    <h3 style="margin:18px 0 8px;color:var(--fg-dim)">Amigos — {{ friends.length }}</h3>
-    <div v-for="r in friends" :key="r.id" class="list-item friend-item" role="button" tabindex="0"
-         @click="openDm(r.user.id)" @keydown.enter="openDm(r.user.id)"
-         @contextmenu.prevent="friendMenu(r.user.id, $event)">
-      <span class="avatar">{{ ini(r.user.displayName) }}<span class="dot" :class="presenceOf(r.user.id)"></span></span>
-      <div class="grow"><div class="uname">{{ r.user.displayName }}</div><div class="sub">@{{ r.user.username }} · {{ presenceOf(r.user.id) }}</div></div>
-    </div>
-
     <h3 style="margin:18px 0 8px;color:var(--fg-dim)">Bloqueados — {{ blocked.length }}</h3>
     <div v-for="r in blocked" :key="r.id" class="list-item">
       <span class="avatar">{{ ini(r.user.displayName) }}</span>
       <div class="grow"><div class="uname">{{ r.user.displayName }}</div></div>
       <button class="btn ghost" @click="unblock(r.user.id)">Desbloquear</button>
     </div>
-
-    <ContextMenu v-if="menu.open" :x="menu.x" :y="menu.y" :items="menuItems"
-                 @select="onMenuSelect" @close="menu.open = false" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onUnmounted, nextTick } from 'vue';
-import { store, loadRelationships, loadDms, openChannel, presenceOf } from '../stores.js';
-import { contacts, dms } from '../services/index.js';
+import { store, loadRelationships } from '../stores.js';
+import { contacts } from '../services/index.js';
 import { createInvitationCancellation } from '../services/invitation-cancellation.js';
-import ContextMenu from './ContextMenu.vue';
 
 const addName = ref(''); const err = ref('');
-const friends = computed(() => store.relationships.filter(r => r.type === 'friend'));
 const incoming = computed(() => store.relationships.filter(r => r.type === 'incoming'));
 const outgoing = computed(() => store.relationships.filter(r => r.type === 'outgoing'));
 const blocked = computed(() => store.relationships.filter(r => r.type === 'blocked'));
@@ -106,36 +93,10 @@ async function add() {
   try { await contacts.request(addName.value.trim()); addName.value = ''; await reload(); }
   catch (e) { err.value = e.message; }
 }
-const emit = defineEmits(['open-dm']);
-async function openDm(uid) {
-  const r = await dms.open(uid);
-  await loadDms();
-  await openChannel(r.dm.id);
-  emit('open-dm', r.dm);
-}
-async function block(uid) { await contacts.block(uid); reload(); }
 async function unblock(uid) { await contacts.unblock(uid); reload(); }
-async function remove(uid) { await contacts.remove(uid); reload(); }
-
-const menu = ref({ open: false, x: 0, y: 0, userId: null });
-const menuItems = [
-  { label: 'Bloquear', value: 'block' },
-  { label: 'Remover amigo', value: 'remove', danger: true },
-];
-function friendMenu(userId, e) {
-  menu.value = { open: true, x: e.clientX, y: e.clientY, userId };
-}
-async function onMenuSelect(item) {
-  err.value = '';
-  try {
-    if (item.value === 'block') await block(menu.value.userId);
-    else if (item.value === 'remove') await remove(menu.value.userId);
-  } catch (e) { err.value = e.message; }
-}
 </script>
 
 <style scoped>
-.friend-item { cursor: pointer; }
 .cancellation-announcement { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .cancellation-notice { color: var(--fg-dim); font-size: 13px; margin: 0 0 8px; }
 .refresh-relationships { align-self: flex-start; }

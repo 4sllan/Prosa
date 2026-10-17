@@ -100,7 +100,9 @@ export async function blockContact(pubkey) {
 export async function unblockContact(pubkey) {
   return mutateContact(pubkey, async () => {
     const c = await st().getContact(pubkey);
-    if (c) { c.state = 'removed'; c.updatedAt = Date.now(); await st().putContact(c); }
+    // bloqueio e local — o outro lado nunca deixou de ver 'friend';
+    // desbloquear restaura a amizade (RF-10)
+    if (c?.state === 'blocked') { c.state = 'friend'; c.updatedAt = Date.now(); await st().putContact(c); }
   });
 }
 

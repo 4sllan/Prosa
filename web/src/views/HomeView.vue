@@ -37,14 +37,6 @@
             </span>
             {{ r.user.displayName }}
           </div>
-          <div class="cat-name">Mensagens diretas</div>
-          <div v-for="d in store.dms" :key="d.id" class="dm-item" :class="{ active: activeChannel?.id === d.id }" @click="openDm(d)">
-            <span class="avatar" style="width:26px;height:26px;font-size:11px">
-              {{ initials(dmName(d)) }}
-              <span v-if="d.type === 'dm' && d.recipients[0]" class="dot" :class="presenceOf(d.recipients[0].id)"></span>
-            </span>
-            {{ dmName(d) }}
-          </div>
         </template>
         <template v-else-if="store.currentCommunity">
           <template v-for="cat in groupedChannels" :key="cat.id ?? 'uncat'">
@@ -91,7 +83,7 @@
       <template v-if="view === 'friends'">
         <button class="friends-back" @click="goHome">&larr; Voltar às conversas</button>
         <PairingPanel v-if="store.mode === 'p2p'" />
-        <FriendsPanel @open-dm="onDmOpened" />
+        <FriendsPanel />
       </template>
       <template v-else-if="view === 'admin'"><AdminPanel /></template>
       <template v-else-if="activeChannel">
@@ -281,18 +273,11 @@ async function clickChannel(ch) {
   mobileChat.value = true;
 }
 
-async function openDm(d) {
-  await openChannel(d.id);
-  mobileChat.value = true;
-}
-
-// FriendsPanel abriu uma DM — sai da view 'friends' para exibir o chat
-function onDmOpened() { view.value = 'home'; mobileChat.value = true; }
-
 async function openFriendDm(uid) {
   const r = await dms.open(uid);
   await loadDms();
   await openChannel(r.dm.id);
+  view.value = 'home';
   mobileChat.value = true;
 }
 
