@@ -128,20 +128,7 @@
       </div>
     </main>
 
-    <!-- Member list -->
-    <aside v-if="view === 'community' && activeChannel?.type === 'text'" class="members">
-      <div v-for="grp in memberGroups" :key="grp.role" class="role-section">{{ grp.label }} — {{ grp.list.length }}</div>
-      <template v-for="grp in memberGroups" :key="grp.role + 'l'">
-        <div v-for="m in grp.list" :key="m.user.id" class="member" @contextmenu.prevent="memberMenu(m)" :title="m.user.username">
-          <span class="avatar" style="width:28px;height:28px;font-size:11px">
-            <img v-if="m.user.avatarUrl" :src="fullUrl(m.user.avatarUrl)"><template v-else>{{ initials(m.user.displayName) }}</template>
-            <span class="dot" :class="presenceOf(m.user.id)"></span>
-          </span>
-          <span style="overflow:hidden;text-overflow:ellipsis">{{ m.nickname || m.user.displayName }}</span>
-          <span v-if="m.role !== 'member'" class="role-tag">{{ m.role }}</span>
-        </div>
-      </template>
-    </aside>
+
 
     <!-- Modais -->
     <div v-if="showCreate" class="modal-bg" @click.self="showCreate = false">
@@ -251,17 +238,6 @@ const groupedChannels = computed(() => {
   return out.filter(g => g.channels.length || g.id);
 });
 
-const memberGroups = computed(() => {
-  const groups = { owner: [], admin: [], moderator: [], member: [] };
-  for (const m of store.members) groups[m.role]?.push(m);
-  return [
-    { role: 'owner', label: 'Dono', list: groups.owner },
-    { role: 'admin', label: 'Admins', list: groups.admin },
-    { role: 'moderator', label: 'Mods', list: groups.moderator },
-    { role: 'member', label: 'Membros', list: groups.member },
-  ].filter(g => g.list.length);
-});
-
 function initials(n) { return String(n || '?').slice(0, 2).toUpperCase(); }
 function nameOf(uid) {
   if (uid === store.user?.id) return store.user.displayName;
@@ -348,17 +324,6 @@ async function createGroup() {
   await dms.createGroup({ name: groupName.value, userIds: groupSel.value });
   groupName.value = ''; groupSel.value = []; showNewGroup.value = false;
   await loadDms();
-}
-
-function memberMenu(m) {
-  // menu de contexto simples: prompt de ações de moderação
-  if (!canManage.value || m.user.id === store.user.id) return;
-  const action = prompt(`Ação para ${m.user.username}: kick | ban | cargo (admin/moderator/member)`);
-  if (!action) return;
-  const cid = store.currentCommunity.id;
-  if (action === 'kick') communities.kick(cid, m.user.id).catch(e => alert(e.message));
-  if (action === 'ban') communities.ban(cid, m.user.id, { reason: 'moderação' }).catch(e => alert(e.message));
-  if (['admin', 'moderator', 'member'].includes(action)) communities.setRole(cid, m.user.id, action).catch(e => alert(e.message));
 }
 
 function doSearch() {
