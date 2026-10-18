@@ -38,6 +38,8 @@ npm test             # 13 testes: auth, permissões, mensagens, convites, DM, WS
 
 ## O que está implementado
 
+Capacidades do backend `server/` + frontend. A UI hoje opera exclusivamente em P2P (ver seção abaixo); o caminho de login/servidor permanece no código, inerte.
+
 - **Contas:** registro, login, logout, recuperação de senha (token; SMTP opcional), perfil (avatar, bio, status), troca de senha
 - **Presença:** online/ausente/ocupado/invisível em tempo real
 - **Comunidades:** criar/editar/excluir, convites (uso/expiração), entrar/sair, cargos (owner/admin/moderator/member), permissões **verificadas no servidor**, kick/ban/unban, categorias e canais (texto/voz), audit log
@@ -130,7 +132,7 @@ VITE_API_URL=http://localhost:4000 npm run dist:linux:arm64  # .deb arm64
 Artefatos: `release/Prosa-<versão>-amd64.deb` e `Prosa-<versão>-arm64.deb`. Instalação: `sudo dpkg -i Prosa-*.deb` (ou `sudo apt install ./Prosa-*.deb` para resolver as dependências gtk3/nss3 automaticamente). Cria entrada no menu de aplicativos.
 
 **Configuração**
-- `VITE_API_URL` (build) ou `PROSA_API_URL` (runtime) define o backend; padrão do build atual: `http://localhost:4000`.
+- `VITE_API_URL` (build) ou `PROSA_API_URL` (runtime) define o backend; padrão do build atual: `http://localhost:4000`. Sem efeito enquanto o app operar só em P2P.
 - `PROSA_DEV_URL` aponta o Electron ao servidor Vite em dev.
 - Segurança: `contextIsolation: true`, `nodeIntegration: false`, sandbox ativo; renderer acessa apenas `window.prosaDesktop` (preload + IPC `app:info`).
 - Ícone: `web/build/icon.icns` (logo da identidade Prosa).
@@ -138,13 +140,13 @@ Artefatos: `release/Prosa-<versão>-amd64.deb` e `Prosa-<versão>-arm64.deb`. In
 **Pendências para distribuição pública**
 - Assinatura Developer ID + notarização Apple (o build atual é ad-hoc: em outra máquina, `xattr -cr /Applications/Prosa.app` se o Gatekeeper reclamar).
 - Windows: os `.exe` não são assinados — o SmartScreen exibirá aviso ("Mais informações → Executar assim mesmo"). Para suprimir: certificado de code-signing (EV ou OV com reputação).
-- Backend remoto público para que o app funcione fora da máquina de dev.
+- Backend remoto público — só relevante se o modo `server` for reativado; em P2P o app não depende de backend.
 
 ## Modo P2P (experimental)
 
 Arquitetura e plano completos: `docs/specs/p2p-architecture.md` e `docs/specs/p2p-architecture-tasks.md`.
 
-- **Seleção de modo** — primeiro boot mostra um seletor; persistido em `localStorage.prosa_mode` (`server` ou `p2p`). Padrão: `server`.
+- **Modo único** — o app inicia sempre em P2P, direto na Home; não há seletor de modo nem login. `localStorage.prosa_mode` deixou de ser lido (valor antigo é ignorado). O caminho `server` (`AuthView`, `providers/server.js`, `realtime.js`, backend `server/`) permanece no código, inerte, para reativação futura.
 - **Identidade** — Ed25519 por instalação. No Electron a chave privada fica no processo main (`web/desktop/identity.cjs`, arquivo `identity.key` em `userData/p2p/` com modo `0600`); o renderer só recebe pubkey/assinaturas via IPC (`p2p:pubkey`, `p2p:sign`, `p2p:fingerprint`). No navegador em dev, cai para WebCrypto + `localStorage` (marcado `devOnly` — não é armazenamento de produção).
 - **Persistência local** — `web/desktop/store.cjs` com backend `node:sqlite` → `sql.js` → journal JSON, acessado pelo renderer via IPC tipada `p2p:store` (ops nomeadas, nunca SQL arbitrário). Tabelas: `events`, `projections`, `contacts`, `files`, `kv`.
 - **Eventos assinados** — envelope `{v,id,spaceId,author,seq,type,ts,body,sig}` com `id = spaceId:author:seq` e assinatura Ed25519 sobre JSON canônico. Seq monotônica por autor/espaço dá dedupe e ordenação; regras LWW/permissões em `p2p/converge.js` (só o autor edita; só admin remove membro/canal).

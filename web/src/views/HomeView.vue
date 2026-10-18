@@ -82,7 +82,7 @@
     <main class="main">
       <template v-if="view === 'friends'">
         <button class="friends-back" @click="goHome"><ArrowLeft :size="14" aria-hidden="true" /> Voltar às conversas</button>
-        <PairingPanel v-if="store.mode === 'p2p'" />
+        <PairingPanel />
         <FriendsPanel />
       </template>
       <template v-else-if="view === 'admin'"><AdminPanel /></template>

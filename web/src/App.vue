@@ -6,7 +6,6 @@
       <div style="color:var(--fg-dim);margin:8px 0">{{ store.bootError }}</div>
       <button class="btn-primary" @click="retry">Tentar novamente</button>
     </div></div>
-    <ModePicker v-else-if="store.ready && store.needsModePick" />
     <router-view v-else-if="store.ready" />
     <div v-else class="empty"><div><div class="big"><MessageSquare :size="42" aria-hidden="true" /></div>Carregando {{ store.appName }}…</div></div>
     <div v-for="(n, i) in store.notifications.slice(-3)" :key="n.at" class="toast" :style="{ top: 16 + i * 84 + 'px' }" @click="dismiss(n)">
@@ -19,7 +18,6 @@
 
 <script setup>
 import { store, bootstrap, dismissNotification } from './stores.js';
-import ModePicker from './components/ModePicker.vue';
 import { TriangleAlert, MessageSquare, X } from 'lucide-vue-next';
 import { watchEffect } from 'vue';
 

@@ -66,9 +66,7 @@ const cancellation = createInvitationCancellation({
   remove: userId => contacts.remove(userId),
   reload,
   onChange: state => { cancellationState.value = state; },
-  successMessage: store.mode === 'p2p'
-    ? 'Convite cancelado neste dispositivo. A entrega ao amigo nao e confirmada.'
-    : 'Convite cancelado.',
+  successMessage: 'Convite cancelado neste dispositivo. A entrega ao amigo nao e confirmada.',
 });
 onUnmounted(() => cancellation.dispose());
 

@@ -3,9 +3,9 @@
 // Cada grupo delega ao provider ativo em runtime; a implementação concreta
 // "server" vive em providers/server.js e um provider P2P futuro implementará
 // a mesma superfície sem alterar os chamadores.
-import { getProvider, MODE, setProvider, chosenMode, setMode } from './provider.js';
+import { getProvider, MODE, setProvider } from './provider.js';
 
-export { MODE, setProvider, chosenMode, setMode };
+export { MODE, setProvider };
 
 // Proxy delega métodos ao provider ativo na hora da chamada, sem
 // enumerar a superfície — operações novas não exigem mudança aqui.

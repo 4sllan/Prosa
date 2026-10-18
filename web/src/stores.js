@@ -29,8 +29,6 @@ export const store = reactive({
   notifications: [],
   theme: localStorage.getItem('prosa_theme') || 'dark',
   mobileNav: 'channels', // 'rail'|'channels'|'chat' for responsive
-  mode: services.MODE,
-  needsModePick: false,
   bootError: null,     // mensagem de falha no bootstrap (rede, P2P, etc.)
 });
 
@@ -151,33 +149,17 @@ async function dispatchP2P(t, d) {
 export async function bootstrap() {
   store.bootError = null;
   try {
-    // modo não escolhido ainda: mostra seletor antes de qualquer bootstrap
-    if (!services.chosenMode()) { store.needsModePick = true; return; }
-
     const cfg = await services.config.get();
     store.appName = cfg.name;
     store.iceServers = cfg.iceServers;
     document.title = cfg.name;
 
-    if (services.MODE === 'p2p') {
-      // identidade local por chave + nó P2P completo — sem token/servidor
-      const ident = await readyP2PIdentity();
-      store.user = ident.publicUser();
-      await initP2PNode({ emitToStore: dispatchP2P });
-      store.wsConnected = true; // nó local sempre "conectado"
-      await Promise.all([loadCommunities(), loadDms(), loadRelationships(), loadPresences()]);
-      return;
-    }
-
-    if (!getToken()) return;
-    try {
-      const me = await services.users.me();
-      store.user = me.user;
-      connectRealtime();
-      await Promise.all([loadCommunities(), loadDms(), loadRelationships(), loadPresences()]);
-    } catch (e) {
-      if (e.status === 401) setToken('');
-    }
+    // identidade local por chave + nó P2P completo — sem token/servidor
+    const ident = await readyP2PIdentity();
+    store.user = ident.publicUser();
+    await initP2PNode({ emitToStore: dispatchP2P });
+    store.wsConnected = true; // nó local sempre "conectado"
+    await Promise.all([loadCommunities(), loadDms(), loadRelationships(), loadPresences()]);
   } catch (e) {
     // bootstrap não pode falhar silenciosamente — sem isso a UI ficaria
     // eternamente em "Carregando…" sem explicação nem retry.
