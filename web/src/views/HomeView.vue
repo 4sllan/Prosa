@@ -2,7 +2,6 @@
   <div class="shell" :class="{ 'chat-open': mobileChat || view === 'friends' }">
     <!-- Rail de comunidades -->
     <nav class="rail">
-      <img class="logo-img" :src="logoUrl" :alt="store.appName">
       <button class="rail-item" :class="{ active: homeSidebar }" @click="goHome" title="Início"><House :size="20" aria-hidden="true" /></button>
       <div class="rail-sep"></div>
       <button v-for="c in store.communities" :key="c.id" class="rail-item"
@@ -12,7 +11,7 @@
         <template v-else>{{ initials(c.name) }}</template>
       </button>
       <button class="rail-item" @click="showCreate = true" title="Criar comunidade" style="color:var(--verde-mata)"><Plus :size="20" aria-hidden="true" /></button>
-      <button class="rail-item" @click="showJoin = true" title="Entrar com convite"><LogIn :size="20" aria-hidden="true" /></button>
+      <button class="rail-item" @click="showJoin = true" title="Entrar com convite"><Link2 :size="20" aria-hidden="true" /></button>
     </nav>
 
     <!-- Sidebar -->
@@ -27,7 +26,8 @@
       <div class="side-body">
         <template v-if="homeSidebar">
           <div class="cat-name">Amigos <button @click="view = 'friends'" title="Ver amigos"><ArrowRight :size="12" aria-hidden="true" /></button></div>
-          <div class="chan" @click="view = 'friends'" :class="{ active: view === 'friends' }"><span class="hash"><Smile :size="16" aria-hidden="true" /></span>Amigos</div>
+          <div class="chan" @click="view = 'friends'" :class="{ active: view === 'friends' }"><span class="nav-ic"><Smile :size="14" aria-hidden="true" /></span>Amigos</div>
+          <div class="cat-name">Rodas</div>
           <div v-for="r in friends" :key="r.id" class="dm-item"
                @click="openFriendDm(r.user.id)" @contextmenu.prevent="friendMenu(r.user.id, $event)">
             <span class="avatar" style="width:26px;height:26px;font-size:11px">
@@ -71,7 +71,7 @@
           <div class="status">{{ presenceLabel }}</div>
         </span>
         <span class="acts">
-          <button @click="cyclePresence" :title="'Presença: ' + myPresence"><Circle :size="12" fill="currentColor" stroke="none" :style="{ color: presenceColor }" aria-hidden="true" /></button>
+          <button @click="toggleMute" :title="rtc.muted ? 'Desmutar microfone' : 'Mutar microfone'"><MicOff v-if="rtc.muted" :size="16" aria-hidden="true" /><Mic v-else :size="16" aria-hidden="true" /></button>
           <button v-if="store.user?.isAdmin" @click="view = 'admin'" title="Admin"><Shield :size="16" aria-hidden="true" /></button>
           <button @click="showUserSettings = true" title="Configurações"><Settings :size="16" aria-hidden="true" /></button>
         </span>
@@ -103,11 +103,27 @@
         <ChatView v-if="activeChannel.type !== 'voice'" :channel="activeChannel" />
         <div v-else class="empty"><div><div class="big"><Volume2 :size="42" aria-hidden="true" /></div>Canal de voz — clique em "Entrar" na barra abaixo</div></div>
       </template>
-      <div v-else class="empty">
-        <div>
-          <div class="big"><Speech :size="42" aria-hidden="true" /></div>
-          <b>{{ store.appName }}</b> — sua roda de conversa.<br>
-          Crie uma comunidade ou entre com um convite.
+      <div v-else class="hero">
+        <div class="hero-card">
+          <img class="hero-logo" :src="logoUrl" :alt="store.appName">
+          <h2 class="hero-title">{{ store.appName }} — sua roda de conversa.</h2>
+          <p class="hero-sub">Crie uma comunidade ou entre com um convite para começar a interagir.</p>
+          <div class="hero-tiles">
+            <button class="hero-tile" @click="showCreate = true">
+              <span class="tile-icon"><Users :size="20" aria-hidden="true" /></span>
+              Rodas
+            </button>
+            <button class="hero-tile" disabled title="Em breve">
+              <span class="tile-icon"><RadioTower :size="20" aria-hidden="true" /></span>
+              Prosa ao vivo
+            </button>
+          </div>
+          <div class="hero-sep"></div>
+          <button class="hero-cta" @click="view = 'friends'">Começar uma nova conversa</button>
+        </div>
+        <div class="hero-badges">
+          <span><Link2 :size="12" aria-hidden="true" /> Conexões seguras</span>
+          <span><ShieldCheck :size="12" aria-hidden="true" /> P2P encrypt</span>
         </div>
       </div>
     </main>
@@ -180,9 +196,9 @@
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { store, selectCommunity, openChannel, loadCommunities, loadDms, loadRelationships, presenceOf, fullUrl } from '../stores.js';
-import { communities, dms, users, misc, contacts } from '../services/index.js';
+import { communities, dms, misc, contacts } from '../services/index.js';
 import logoUrl from '../assets/logotipo-prosa.png';
-import { rtc, joinVoice, leaveVoice } from '../rtc.js';
+import { rtc, joinVoice, leaveVoice, toggleMute } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
 import VoiceBar from '../components/VoiceBar.vue';
 import FriendsPanel from '../components/FriendsPanel.vue';
@@ -191,7 +207,7 @@ import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
 import ContextMenu from '../components/ContextMenu.vue';
-import { House, Plus, LogIn, Settings, SquarePen, ArrowRight, Smile, Volume2, Hash, MicOff, ScreenShare, Circle, Shield, ArrowLeft, UserRound, Speech } from 'lucide-vue-next';
+import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Smile, Volume2, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -223,10 +239,6 @@ const homeSidebar = computed(() => view.value === 'home' || view.value === 'frie
 const canManage = computed(() => ['owner', 'admin'].includes(store.currentCommunity?.myRole));
 const myPresence = computed(() => localStorage.getItem('prosa_presence') || 'online');
 const presenceLabel = computed(() => ({ online: 'Disponível', idle: 'Ausente', dnd: 'Ocupado', invisible: 'Invisível' }[myPresence.value]));
-const presenceColor = computed(() => ({
-  online: 'var(--verde-mata)', idle: 'var(--amarelo-ipe)',
-  dnd: 'var(--coral-siriuba)', invisible: '#777',
-}[myPresence.value] || 'var(--verde-mata)'));
 
 const groupedChannels = computed(() => {
   const byCat = store.categories.map(c => ({ id: c.id, name: c.name, channels: [] }));
@@ -261,7 +273,7 @@ function nameOf(uid) {
 function dmName(d) { return d.type === 'group_dm' ? d.name : d.recipients[0]?.displayName || 'DM'; }
 function voiceCount(chId) { return store.voice[chId]?.length || 0; }
 
-function goHome() { view.value = 'home'; store.currentCommunity = null; mobileChat.value = false; }
+function goHome() { view.value = 'home'; store.currentCommunity = null; store.activeChannelId = null; mobileChat.value = false; }
 
 async function openCommunity(c) {
   view.value = 'community';
@@ -336,13 +348,6 @@ async function createGroup() {
   await dms.createGroup({ name: groupName.value, userIds: groupSel.value });
   groupName.value = ''; groupSel.value = []; showNewGroup.value = false;
   await loadDms();
-}
-
-function cyclePresence() {
-  const order = ['online', 'idle', 'dnd', 'invisible'];
-  const next = order[(order.indexOf(myPresence.value) + 1) % order.length];
-  localStorage.setItem('prosa_presence', next);
-  users.setPresence(next);
 }
 
 function memberMenu(m) {

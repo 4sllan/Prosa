@@ -118,7 +118,7 @@ export async function leaveVoice() {
 export function toggleMute() {
   rtc.muted = !rtc.muted;
   rtc.localStream?.getAudioTracks().forEach(t => t.enabled = !rtc.muted);
-  events.updateVoice(rtc.channelId, { muted: rtc.muted });
+  if (rtc.channelId) events.updateVoice(rtc.channelId, { muted: rtc.muted });
 }
 
 export async function toggleVideo() {

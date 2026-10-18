@@ -4,6 +4,11 @@ import App from './App.vue';
 import AuthView from './views/AuthView.vue';
 import HomeView from './views/HomeView.vue';
 import { store, bootstrap } from './stores.js';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
 import './style.css';
 
 const router = createRouter({
