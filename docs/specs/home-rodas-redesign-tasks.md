@@ -1,8 +1,8 @@
 # Tasks — Redesign da Home (rail, sidebar com RODAS e hero)
 
-- Status geral: em andamento (T5 adicionada após conclusão de T1–T4)
+- Status geral: em andamento (T6 adicionada após T5)
 - Spec de referência: `docs/specs/home-rodas-redesign.md` (aprovada)
-- Ordem de execução: T1 → T2 → T3 → T4 → T5
+- Ordem de execução: T1 → T2 → T3 → T4 → T5 → T6
 
 ## T1 — Sidebar: seção RODAS com amigos + botão de mic na userbar
 
@@ -247,3 +247,43 @@
   - Pendente: observação visual do menu — exige perfil com contato em
     RODAS para abrir o context menu (headless com perfil limpo não
     cobre).
+
+## T6 — Menu de contexto de mensagem com o mesmo visual do T5
+
+- Status: concluida
+- Requisitos/aceite: o menu de contexto da mensagem (Responder,
+  Encaminhar, Copiar texto, Editar, Fixar, Excluir mensagem) deve ter o
+  mesmo visual do menu de amigo (RODAS) — itens com label à esquerda e
+  ícone à direita, divisor antes da zona de perigo. Sem mudança de
+  comportamento nem de dados.
+- Dependências: T5 (estilos e suporte a `icon`/`divider` em
+  `ContextMenu.vue`)
+- Escopo e arquivos prováveis:
+  - `web/src/components/ChatView.vue` — `menuItems` passa a incluir
+    `icon` em cada item e `{ divider: true }` antes de "Excluir
+    mensagem"; imports de ícones.
+- Implementação:
+  - Ícones: `Reply` (Responder), `Forward` (Encaminhar), `Copy`
+    (Copiar texto), `Pencil` (Editar), `Pin`/`PinOff` (Fixar/Desafixar
+    conforme `m.pinned`), `Trash2` (Excluir mensagem, danger).
+  - `items.push({ divider: true }, …)` antes do item de exclusão,
+    replicando o divisor da zona de perigo do menu de amigo.
+  - Ordem, condições de exibição (autor/moderador/DM) e handlers de
+    `onMenuSelect` inalterados.
+- Testes e comandos de validação:
+  - `npm run build`, `git diff --check`.
+  - Manual/headless: botão direito numa mensagem → menu renderiza com
+    ícones à direita e divisor antes de "Excluir mensagem"; cada ação
+    continua funcionando; Esc/backdrop/scroll fecham.
+- Critério de conclusão: menu de mensagem visualmente igual ao de amigo
+  (ícones + divisor); todas as ações preservadas.
+- Evidências:
+  - Arquivos alterados: `web/src/components/ChatView.vue` (`menuItems`
+    com `icon` por item e `{ divider: true }` antes de "Excluir
+    mensagem"; import ampliado com `Forward`, `PinOff`, `Pencil`,
+    `Trash2`). Estilos herdados de `ContextMenu.vue` (T5) — nenhum CSS
+    novo.
+  - `npm run build`: ok. `git diff --check`: limpo.
+  - Validação visual (usuário, 2026-10-21): menu da mensagem renderiza
+    igual ao menu de amigo — ícones à direita e divisor antes de
+    "Excluir mensagem".

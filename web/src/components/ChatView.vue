@@ -93,7 +93,7 @@ import { messages as messagesService } from '../services/index.js';
 import { messageTime } from '../services/datetime.js';
 import { copyText } from '../services/copy-text.js';
 import ContextMenu from './ContextMenu.vue';
-import { Reply, Pin, Paperclip, Copy, X, SendHorizontal } from 'lucide-vue-next';
+import { Reply, Forward, Pin, PinOff, Paperclip, Copy, Pencil, Trash2, X, SendHorizontal } from 'lucide-vue-next';
 
 const props = defineProps({ channel: Object });
 const draft = ref(''); const files = ref([]); const replyTo = ref(null);
@@ -172,16 +172,16 @@ const menuItems = computed(() => {
   const m = menu.value.msg;
   if (!m) return [];
   const items = [
-    { label: 'Responder', value: 'reply' },
-    { label: 'Encaminhar', value: 'forward' },
-    { label: 'Copiar texto', value: 'copy' },
+    { label: 'Responder', value: 'reply', icon: Reply },
+    { label: 'Encaminhar', value: 'forward', icon: Forward },
+    { label: 'Copiar texto', value: 'copy', icon: Copy },
   ];
-  if (m.author.id === store.user.id) items.push({ label: 'Editar', value: 'edit' });
+  if (m.author.id === store.user.id) items.push({ label: 'Editar', value: 'edit', icon: Pencil });
   if (canModerate.value || String(props.channel.type).includes('dm')) {
-    items.push({ label: m.pinned ? 'Desafixar' : 'Fixar', value: 'pin' });
+    items.push({ label: m.pinned ? 'Desafixar' : 'Fixar', value: 'pin', icon: m.pinned ? PinOff : Pin });
   }
   if (m.author.id === store.user.id || canModerate.value) {
-    items.push({ label: 'Excluir mensagem', value: 'delete', danger: true });
+    items.push({ divider: true }, { label: 'Excluir mensagem', value: 'delete', danger: true, icon: Trash2 });
   }
   return items;
 });
