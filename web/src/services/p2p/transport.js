@@ -65,10 +65,13 @@ export const p2pTransport = {
   },
 
   // ---- peers ----
-  addPeer(peerId, channel, { keepalive = true } = {}) {
-    peers.set(peerId, { channel, state: 'open' });
+  addPeer(peerId, channel, { keepalive = true, pc = null } = {}) {
+    peers.set(peerId, { channel, pc, state: 'open' });
     presences.set(peerId, { presence: 'online', ts: Date.now() });
-    channel.onclose = () => this.dropPeer(peerId, 'channel-close');
+    // close tardio de canal substituído não pode derrubar o registro atual
+    channel.onclose = () => {
+      if (peers.get(peerId)?.channel === channel) this.dropPeer(peerId, 'channel-close');
+    };
     lastSeen.set(peerId, Date.now());
     // keepalive só em peers com hello v2 — legado v1 não responde 'ping'
     if (keepalive) {
@@ -96,14 +99,23 @@ export const p2pTransport = {
   },
   dropPeer(peerId, reason = 'closed') {
     const p = peers.get(peerId);
-    if (p) { p.state = 'closed'; try { p.channel.close(); } catch {} }
+    if (p?.state !== 'open') return; // idempotente: só atua na transição open→closed
+    p.state = 'closed';
+    try { p.channel.close(); } catch {}
+    try { p.pc?.close?.(); } catch {}
     this.stopKeepalive(peerId);
     presences.set(peerId, { presence: 'offline', ts: Date.now() });
     logDiag('peer.closed', diagFingerprint(peerId) + ':' + reason);
     emitLocal('peer.closed', { peerId });
   },
-  peerIds: () => [...peers.keys()].filter(id => peers.get(id).state === 'open'),
-  isOnline: (peerId) => peers.get(peerId)?.state === 'open',
+  peerIds: () => [...peers.keys()].filter(id => p2pTransport.isOnline(id)),
+  isOnline: (peerId) => {
+    const p = peers.get(peerId);
+    // MockChannel sem readyState segue válido; canal real morto sem onclose não conta
+    return p?.state === 'open' && (!p.channel.readyState || p.channel.readyState === 'open');
+  },
+  // expõe o registro atual para callbacks validarem a identidade do recurso
+  peerEntry: (peerId) => peers.get(peerId),
   presenceOf: (peerId) => presences.get(peerId),
 
   // ---- espaços ----
@@ -117,8 +129,16 @@ export const p2pTransport = {
   // ---- envio ----
   send(peerId, env) {
     const p = peers.get(peerId);
-    if (p?.state !== 'open') { enqueue(peerId, env); return false; }
-    return sendNow(p.channel, env);
+    if (p?.state === 'open') {
+      const ready = !p.channel.readyState || p.channel.readyState === 'open';
+      if (ready && sendNow(p.channel, env)) return true;
+      // Só derruba quando o readyState evidencia canal morto (zumbi sem onclose,
+      // ou canal que não expõe estado e falhou). Exceção com canal ainda 'open'
+      // é transitória (ex.: mensagem grande demais) e só reenfileira.
+      if (p.channel.readyState !== 'open') this.dropPeer(peerId, 'send-failure');
+    }
+    enqueue(peerId, env);
+    return false;
   },
 
   // broadcast para todos os membros online de um espaço (ou todos os peers se spaceId vazio/*)

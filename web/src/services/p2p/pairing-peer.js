@@ -55,7 +55,12 @@ export function wirePairingPeer(node, pc, dc, {
       // O hello local deve preceder controles no canal ordenado.
       const sent = await sendHello();
       if (cancelled || (!sent && !alreadyOnline)) return;
-      if (!alreadyOnline) node.attachPeer(m.from, pc, dc, { keepalive: !check.legacy });
+      if (!alreadyOnline) {
+        // registro residual (fechado/zumbi): encerra os recursos antigos
+        // antes de anexar — drop é idempotente quando não há o que limpar
+        p2pTransport.dropPeer(m.from, 'replaced');
+        node.attachPeer(m.from, pc, dc, { keepalive: !check.legacy });
+      }
       attached = true;
       dc.removeEventListener('message', receive);
       if (alreadyOnline) {
@@ -66,9 +71,11 @@ export function wirePairingPeer(node, pc, dc, {
       await onConnected?.(m.from, check.legacy);
       for (const env of pending.splice(0)) await node.receive(m.from, env);
 
-      // Re-pareamento nunca recria removed nem reenvia pendencias.
+      // Re-pareamento reenvia pedido apenas para removed (re-parear é
+      // intenção explícita do iniciador); nunca reenvia pendencias,
+      // friend ou blocked.
       const existing = await node.store.getContact(m.from);
-      if (initiator && !existing) {
+      if (initiator && (!existing || existing.state === 'removed')) {
         await requestContact(node.identity, { pubkey: m.from });
         node.emitToStore?.('contacts.changed', { peerId: m.from });
         onRequest?.();

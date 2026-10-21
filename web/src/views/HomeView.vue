@@ -185,6 +185,7 @@ import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { store, selectCommunity, openChannel, loadCommunities, loadDms, loadRelationships, presenceOf, fullUrl } from '../stores.js';
 import { communities, dms, misc, contacts, messages } from '../services/index.js';
+import { p2pTransport } from '../services/p2p/transport.js';
 import logoUrl from '../assets/logotipo-prosa.png';
 import { rtc, joinVoice, leaveVoice, toggleMute, toggleSpeaker } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
@@ -195,7 +196,7 @@ import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
 import ContextMenu from '../components/ContextMenu.vue';
-import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Smile, Volume2, VolumeX, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban } from 'lucide-vue-next';
+import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Smile, Volume2, VolumeX, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban, Unplug } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -285,6 +286,9 @@ const friendMenuItems = computed(() => {
     { label: `Silenciar @${uname}`, value: 'mute', icon: BellOff },
     { label: 'Pin', value: 'pin', icon: Pin },
     { label: 'Convidar para comunidade', value: 'invite', icon: UserPlus },
+    // Desconectar encerra só o transporte P2P — a amizade é preservada
+    ...(p2pTransport.isOnline(menu.value.userId)
+      ? [{ label: 'Desconectar', value: 'disconnect', icon: Unplug }] : []),
     { divider: true },
     { label: 'Desfazer conexão', value: 'remove', icon: Link2Off },
     { label: 'Bloquear contato', value: 'block', icon: Ban, danger: true },
@@ -299,6 +303,7 @@ async function onFriendMenuSelect(item) {
       const dm = store.dms.find(d => d.recipients?.[0]?.id === menu.value.userId);
       if (dm) await messages.markRead(dm.id, {});
     } else if (item.value === 'block') await contacts.block(menu.value.userId);
+    else if (item.value === 'disconnect') p2pTransport.dropPeer(menu.value.userId, 'user-disconnect');
     else if (item.value === 'remove') await contacts.remove(menu.value.userId);
     // 'profile', 'mute', 'pin' e 'invite' aguardam as features correspondentes
     await loadRelationships();

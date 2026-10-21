@@ -269,6 +269,28 @@ test('flow: late completion failure cannot overwrite a new session', async () =>
   assert.equal(flow.state.error, '');
 });
 
+test('flow: pasting a link while connected keeps the session and explains the restart', async () => {
+  const { flow, calls, pc, dc } = fixture();
+  await flow.createInvite();
+  calls.wires[0].onConnected('peer', false);
+  assert.equal(flow.state.step, 'connected');
+  await flow.continueWithLink(link('offer'));
+  assert.match(flow.state.notice, /Recomece o pareamento/);
+  assert.equal(flow.state.step, 'connected');
+  assert.equal(pc.closes + dc.closes, 0);
+  assert.equal(calls.answers.length + calls.offers.length - 1, 0);
+});
+
+test('flow: creating an invite over an existing session explains the restart', async () => {
+  const { flow, calls } = fixture();
+  await flow.createInvite();
+  assert.equal(flow.state.step, 'awaiting-response');
+  await flow.createInvite();
+  assert.match(flow.state.notice, /Recomece o pareamento/);
+  assert.equal(flow.state.step, 'awaiting-response');
+  assert.equal(calls.offers.length, 1);
+});
+
 test('flow: failed request after attachment keeps connected state and peer resources', async () => {
   const { flow, calls, pc, dc } = fixture();
   await flow.createInvite();
@@ -290,7 +312,21 @@ for (const [state, message] of [
     calls.wires[0].onConnected('peer', false);
     calls.wires[0].onRelationship(state);
     assert.equal(flow.state.step, 'connected');
+    assert.equal(flow.state.relationship, state);
     assert.match(flow.state.notice, message);
     assert.equal(calls.complete.length, 0);
   });
 }
+
+test('flow: reported relationship clears on restart and on a new connection', async () => {
+  const { flow, calls } = fixture();
+  await flow.createInvite();
+  calls.wires[0].onConnected('peer', false);
+  calls.wires[0].onRelationship('removed');
+  assert.equal(flow.state.relationship, 'removed');
+  flow.restart();
+  assert.equal(flow.state.relationship, '');
+  await flow.createInvite();
+  calls.wires[1].onConnected('peer2', false);
+  assert.equal(flow.state.relationship, '');
+});

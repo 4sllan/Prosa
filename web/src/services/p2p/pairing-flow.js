@@ -3,7 +3,7 @@ import { wirePairingPeer } from './pairing-peer.js';
 import { writeClipboardText } from './clipboard.js';
 
 const initialState = () => ({
-  step: 'idle', link: '', linkType: '', peerId: '', legacy: false,
+  step: 'idle', link: '', linkType: '', peerId: '', legacy: false, relationship: '',
   error: '', notice: '', warning: '', copying: false, copyError: false,
 });
 export const isPairingBusy = step => ['generating-offer', 'generating-answer', 'connecting'].includes(step);
@@ -41,7 +41,7 @@ export function createPairingFlow({
         attempt.attached = true;
         if (active(attempt)) update({
           step: 'connected', peerId, legacy, link: '', linkType: '', copying: false,
-          error: '', notice: 'Conexao estabelecida. A amizade e confirmada em Amigos.',
+          relationship: '', error: '', notice: 'Conexao estabelecida. A amizade e confirmada em Amigos.',
         });
       },
       onRequest: () => {
@@ -55,7 +55,7 @@ export function createPairingFlow({
           outgoing: 'Ja existe uma solicitacao em Enviadas. Aguarde o amigo aceitar.',
           friend: 'Peer conectado. Voces ja sao amigos.',
         }[contactState];
-        if (active(attempt) && notice) update({ notice });
+        if (active(attempt) && notice) update({ notice, relationship: contactState });
       },
       onError: (_error, connected) => {
         attempt.attached ||= connected;
@@ -90,7 +90,11 @@ export function createPairingFlow({
   };
 
   async function createInvite() {
-    if (disposed || current || isPairingBusy(state.step)) return;
+    if (disposed || isPairingBusy(state.step)) return;
+    if (current) {
+      update({ notice: 'Recomece o pareamento para criar um novo convite.' });
+      return;
+    }
     const attempt = begin('offer');
     update({ step: 'generating-offer', error: '', notice: '' });
     try {
@@ -104,7 +108,11 @@ export function createPairingFlow({
   }
 
   async function continueWithLink(input) {
-    if (disposed || isPairingBusy(state.step) || state.step === 'connected') return;
+    if (disposed || isPairingBusy(state.step)) return;
+    if (state.step === 'connected') {
+      update({ notice: 'Recomece o pareamento para usar um novo link.' });
+      return;
+    }
     let payload;
     try { payload = decodePairPayload(input); }
     catch (e) { update({ error: e.message, notice: '' }); return; }

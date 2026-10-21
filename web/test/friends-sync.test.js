@@ -103,3 +103,24 @@ test('A->B: remover amigo propaga removed e esvazia as duas pontas', async () =>
   assert.equal((await store.getContact(bId)).state, 'removed');
   assert.deepEqual(await friendsList(), []);
 });
+
+test('A->B: pedidos cruzados resolvem em amizade nas duas pontas', async () => {
+  const toB = capturePeer(bId), toA = capturePeer(aId);
+  // A e B pedem amizade um ao outro ao mesmo tempo
+  await contacts.requestContact(aIdentity, { pubkey: bId });
+  await contacts.requestContact(bIdentity, { pubkey: aId });
+  assert.equal(await typeOf(bId), 'outgoing');
+  assert.equal(await typeOf(aId), 'outgoing');
+  const reqAB = toB.find(e => e.type === 'contact_req');
+  const reqBA = toA.find(e => e.type === 'contact_req');
+  assert.ok(reqAB && reqBA);
+
+  // cada lado recebe o pedido do outro sobre seu outgoing -> friend + accept
+  await contacts.handleContactReq(bId, reqBA.body, aIdentity); // A recebe pedido de B
+  await contacts.handleContactReq(aId, reqAB.body, bIdentity); // B recebe pedido de A
+  assert.equal(await typeOf(bId), 'friend');
+  assert.equal(await typeOf(aId), 'friend');
+  assert.equal(toB.filter(e => e.type === 'contact_accept').length, 1); // A aceita a B
+  assert.equal(toA.filter(e => e.type === 'contact_accept').length, 1); // B aceita a A
+  assert.deepEqual((await friendsList()).sort(), [aId, bId].sort());
+});

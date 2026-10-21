@@ -31,6 +31,11 @@
       <p v-if="pair.warning" class="warn">{{ pair.warning }}</p>
       <p v-if="pair.error" class="error" role="alert">{{ pair.error }}</p>
       <p v-if="pair.peerId" class="ok">Peer conectado: <code>{{ lastPeerFp || pair.peerId.slice(0, 16) + '…' }}</code></p>
+      <button v-if="pair.relationship === 'removed' && pair.peerId" class="btn ghost"
+              :disabled="requestSending" @click="resendRequest">
+        {{ requestSending ? 'Enviando…' : 'Solicitar amizade novamente' }}
+      </button>
+      <p v-if="requestErr" class="error" role="alert">{{ requestErr }}</p>
       <p v-if="pair.legacy" class="warn" role="status">Handshake legado sem prova de posse — confira com o amigo o fingerprint em “Detalhes da conexão”.</p>
       <button v-if="pair.step !== 'idle'" class="btn ghost restart" @click="restart">Recomeçar pareamento</button>
     </div>
@@ -55,6 +60,8 @@
           <div class="krow" v-for="p in knownPeers" :key="p.pubkey">
             <code class="key">{{ p.fingerprint || p.pubkey.slice(0, 16) + '…' }}</code>
             <span :class="p.online ? 'ok' : 'dim'">{{ p.online ? 'online' : 'offline' }}</span>
+            <button v-if="p.online" class="btn ghost" title="Encerrar a conexão com este peer — o contato é mantido"
+                    @click="disconnectPeer(p.pubkey)">Desconectar</button>
           </div>
         </div>
         <div class="add">
@@ -85,6 +92,8 @@ const contactKey = ref('');
 const peers = ref([]);
 const lastPeerFp = ref('');
 const contactErr = ref('');
+const requestErr = ref('');
+const requestSending = ref(false);
 const keyCopying = ref(false);
 const keyNotice = ref('');
 const keyErr = ref('');
@@ -165,6 +174,13 @@ async function copyKey() {
 
 function restart() { flow.restart(); remoteLink.value = ''; }
 
+// desconecta só o transporte: o contato/amigo permanece na lista
+function disconnectPeer(pubkey) {
+  p2pTransport.dropPeer(pubkey, 'user-disconnect');
+  refreshPeers();
+  refreshKnown();
+}
+
 async function addContact() {
   contactErr.value = '';
   try {
@@ -172,6 +188,18 @@ async function addContact() {
     contactKey.value = '';
     await loadRelationships();
   } catch (e) { contactErr.value = e.message; }
+}
+
+// re-solicita amizade para o peer conectado cujo contato foi removido
+async function resendRequest() {
+  if (requestSending.value || !pair.value.peerId) return;
+  requestSending.value = true;
+  requestErr.value = '';
+  try {
+    await contacts.requestContact(getP2PNode().identity, { pubkey: pair.value.peerId });
+    await loadRelationships();
+  } catch (e) { requestErr.value = e.message; }
+  finally { requestSending.value = false; }
 }
 </script>
 
@@ -210,6 +238,7 @@ textarea, input { width: 100%; background: rgba(0,0,0,.3); color: inherit; borde
 .dim { color: var(--muted, #9aa0b4); margin: 0; font-size: 11px; }
 .known { margin-top: 8px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .known .label { font-size: 10px; color: var(--muted, #9aa0b4); text-transform: uppercase; }
-.krow { display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
+.krow { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 11px; }
+.krow .btn { padding: 3px 8px; font-size: 11px; flex-shrink: 0; }
 .add { display: flex; gap: 6px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 10px; }
 </style>

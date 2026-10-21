@@ -31,7 +31,7 @@ export async function initP2PNode({ emitToStore } = {}) {
     attachPeer(peerId, pc, dc, { keepalive = true } = {}) {
       attachChannel(pc, dc, {
         onOpen: async () => {
-          p2pTransport.addPeer(peerId, dc, { keepalive });
+          p2pTransport.addPeer(peerId, dc, { keepalive, pc });
           // dispara sync de todos os espaços compartilhados
           for (const sp of listSpaces()) {
             if (sp.members.has(peerId)) await sendSyncReq(peerId, sp.id);
@@ -39,20 +39,26 @@ export async function initP2PNode({ emitToStore } = {}) {
           contacts.broadcastProfile(identity).catch(() => {});
         },
         onMessage: (env) => node.receive(peerId, env),
-        onClose: () => p2pTransport.dropPeer(peerId),
+        // close tardio de um canal substituído não derruba o registro atual
+        onClose: () => {
+          if (p2pTransport.peerEntry(peerId)?.channel === dc) p2pTransport.dropPeer(peerId);
+        },
       });
       // queda transitória: tenta restartIce uma vez antes de declarar offline.
       // Candidatos antigos podem ter expirado no NAT — é só uma tentativa.
       if (pc?.restartIce && pc.addEventListener) {
         let restarting = false;
         pc.addEventListener('iceconnectionstatechange', () => {
+          // pc substituído num re-attach não pode agir sobre a conexão atual
+          if (p2pTransport.peerEntry(peerId)?.pc !== pc) return;
           const s = pc.iceConnectionState;
           if ((s !== 'disconnected' && s !== 'failed') || restarting) return;
           restarting = true;
           logDiag('ice.restart', diagFingerprint(peerId));
           try { pc.restartIce(); } catch {}
           setTimeout(() => {
-            if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+            if (p2pTransport.peerEntry(peerId)?.pc === pc
+              && pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
               logDiag('ice.restart.fail', diagFingerprint(peerId));
               p2pTransport.dropPeer(peerId, 'ice-restart-failed');
             }

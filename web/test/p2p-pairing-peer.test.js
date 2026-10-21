@@ -97,7 +97,7 @@ test('pairing-peer: answerer does not request; real node receives and accepts fr
   assert.equal(state.requests, 0);
 });
 
-for (const state of ['incoming', 'outgoing', 'friend', 'blocked', 'removed', 'unknown']) {
+for (const state of ['incoming', 'outgoing', 'friend', 'blocked', 'unknown']) {
   test(`pairing-peer: re-pairing preserves ${state} without resending`, async () => {
     await node.store.putContact({ pubkey: remoteKey, state, profile: { displayName: 'Keep' } });
     const original = structuredClone(await node.store.getContact(remoteKey));
@@ -320,15 +320,113 @@ test('pairing-peer: online peer does not bypass signature verification', async (
   assert.equal(p2pTransport.isOnline(remoteKey), true);
 });
 
-test('pairing-peer: re-pairing reports removed relationship without resurrecting it', async (t) => {
+test('pairing-peer: re-pairing iniciador sobre removed reenvia pedido pelo canal vivo', async (t) => {
   await node.store.putContact({ pubkey: remoteKey, state: 'removed', profile: {} });
   const live = channel();
   p2pTransport.addPeer(remoteKey, live, { keepalive: false });
   const relationship = t.mock.fn();
+  const request = t.mock.fn();
   const dc = channel();
-  wirePairingPeer(node, null, dc, { initiator: true, onRelationship: relationship });
+  wirePairingPeer(node, null, dc, { initiator: true, onRelationship: relationship, onRequest: request });
   await dc.deliver(await makeHello(remote));
-  assert.deepEqual(relationship.mock.calls[0]?.arguments, ['removed']);
-  assert.equal((await node.store.getContact(remoteKey)).state, 'removed');
-  assert.equal(requests(live).length, 0);
+  assert.equal(relationship.mock.callCount(), 0);
+  assert.equal(request.mock.callCount(), 1);
+  assert.equal((await node.store.getContact(remoteKey)).state, 'outgoing');
+  assert.equal(requests(live).length, 1); // pedido sai pela conexão viva
+});
+
+test('pairing-peer: iniciador com contato removed reenvia pedido pelo canal recém-atachado', async () => {
+  await node.store.putContact({ pubkey: remoteKey, state: 'removed', profile: {} });
+  const dc = channel();
+  const state = wire(dc);
+  await dc.deliver(await makeHello(remote));
+  assert.equal(p2pTransport.isOnline(remoteKey), true);
+  assert.equal((await node.store.getContact(remoteKey)).state, 'outgoing');
+  assert.equal(requests(dc).length, 1);
+  assert.equal(state.requests, 1);
+  assert.ok(events.some(e => e.type === 'contacts.changed' && e.data.peerId === remoteKey));
+});
+
+// RTCPeerConnection stub: listeners disparáveis e restartIce observável
+function stubPc() {
+  const listeners = {};
+  return {
+    iceConnectionState: 'connected',
+    restarted: false,
+    closed: false,
+    restartIce() { this.restarted = true; },
+    addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+    fire(type) { for (const fn of listeners[type] || []) fn(); },
+    close() { this.closed = true; },
+  };
+}
+
+test('pairing-peer: attachPeer registra o pc no transporte', () => {
+  const pc1 = stubPc();
+  node.attachPeer(remoteKey, pc1, channel(), { keepalive: false });
+  assert.equal(p2pTransport.peerEntry(remoteKey)?.pc, pc1);
+});
+
+test('pairing-peer: ICE listener de pc substituído fica inerte e não derruba a conexão nova', () => {
+  const pc1 = stubPc();
+  node.attachPeer(remoteKey, pc1, channel(), { keepalive: false });
+  const pc2 = stubPc();
+  node.attachPeer(remoteKey, pc2, channel(), { keepalive: false });
+  assert.equal(p2pTransport.peerEntry(remoteKey)?.pc, pc2);
+  pc1.iceConnectionState = 'failed';
+  pc1.fire('iceconnectionstatechange');
+  assert.equal(pc1.restarted, false);
+  assert.equal(p2pTransport.isOnline(remoteKey), true);
+});
+
+test('pairing-peer: pc substituído durante o restart não derruba; pc atual falhando derruba', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pc1 = stubPc();
+  node.attachPeer(remoteKey, pc1, channel(), { keepalive: false });
+  pc1.iceConnectionState = 'failed';
+  pc1.fire('iceconnectionstatechange');
+  assert.equal(pc1.restarted, true);
+  // re-attach durante a janela de 15 s do restart
+  const pc2 = stubPc();
+  node.attachPeer(remoteKey, pc2, channel(), { keepalive: false });
+  t.mock.timers.tick(15000);
+  assert.equal(p2pTransport.isOnline(remoteKey), true);
+  // falha do pc registrado encerra a conexão
+  pc2.iceConnectionState = 'failed';
+  pc2.fire('iceconnectionstatechange');
+  t.mock.timers.tick(15000);
+  assert.equal(p2pTransport.isOnline(remoteKey), false);
+});
+
+test('pairing-peer: re-pareamento substitui registro zumbi e atacha o canal novo', async (t) => {
+  const zombie = channel('closed');
+  const oldPc = { close: t.mock.fn() };
+  p2pTransport.addPeer(remoteKey, zombie, { keepalive: false, pc: oldPc });
+  assert.equal(p2pTransport.isOnline(remoteKey), false); // zumbi não conta como vivo
+  const attach = t.mock.method(node, 'attachPeer');
+  const dc = channel();
+  const pc = { close: t.mock.fn() };
+  const connected = t.mock.fn();
+  wirePairingPeer(node, pc, dc, { initiator: true, onConnected: connected });
+  await dc.deliver(await makeHello(remote));
+  assert.equal(attach.mock.callCount(), 1);
+  assert.equal(connected.mock.callCount(), 1);
+  assert.equal(oldPc.close.mock.callCount(), 1); // recursos antigos encerrados
+  assert.equal(pc.close.mock.callCount(), 0);    // canal novo preservado
+  assert.equal(p2pTransport.peerEntry(remoteKey)?.channel, dc);
+  assert.equal(p2pTransport.isOnline(remoteKey), true);
+  assert.equal(requests(dc).length, 1); // contact_req sai pelo canal novo
+});
+
+test('pairing-peer: re-pareamento com registro já fechado atacha normalmente', async (t) => {
+  const dead = channel();
+  p2pTransport.addPeer(remoteKey, dead, { keepalive: false });
+  p2pTransport.dropPeer(remoteKey, 'user-disconnect');
+  const dc = channel();
+  const connected = t.mock.fn();
+  wirePairingPeer(node, null, dc, { initiator: true, onConnected: connected });
+  await dc.deliver(await makeHello(remote));
+  assert.equal(connected.mock.callCount(), 1);
+  assert.equal(p2pTransport.peerEntry(remoteKey)?.channel, dc);
+  assert.equal(p2pTransport.isOnline(remoteKey), true);
 });

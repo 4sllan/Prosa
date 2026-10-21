@@ -55,8 +55,8 @@ test('contacts: incoming request uses channel peer, not the profile id', async (
   assert.equal((await store.allContacts()).length, 1);
 });
 
-for (const state of states.filter(s => s !== 'removed')) {
-  test(`contacts: repeated or crossed request preserves ${state}`, async () => {
+for (const state of states.filter(s => s !== 'removed' && s !== 'outgoing')) {
+  test(`contacts: repeated request preserves ${state}`, async () => {
     const original = await seed(state);
     await contacts.handleContactReq(peer, { profile: remoteProfile }, identity);
     await contacts.handleContactReq(peer, { profile: remoteProfile }, identity);
@@ -64,6 +64,19 @@ for (const state of states.filter(s => s !== 'removed')) {
     assert.equal((await store.allContacts()).length, 1);
   });
 }
+
+test('contacts: crossed request over outgoing resolves to friend and sends contact_accept', async () => {
+  await seed('outgoing');
+  const sent = capturePeer();
+  const c = await contacts.handleContactReq(peer, { profile: remoteProfile }, identity);
+  assert.equal(c.state, 'friend');
+  const stored = await store.getContact(peer);
+  assert.equal(stored.state, 'friend');
+  assert.deepEqual(stored.profile, remoteProfile); // mescla perfil do pedido
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, 'contact_accept');
+  assert.deepEqual(sent[0].body, { profile: identity.publicUser() });
+});
 
 test('contacts: local acceptance promotes incoming and sends contact_accept', async () => {
   await seed('incoming');

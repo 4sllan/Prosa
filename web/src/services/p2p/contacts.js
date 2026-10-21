@@ -39,7 +39,18 @@ export async function handleContactReq(fromPeerId, body, identity) {
   return mutateContact(fromPeerId, async () => {
     const existing = await st().getContact(fromPeerId);
     if (existing?.state === 'blocked') return; // ignora silenciosamente
-    // Pedidos repetidos ou cruzados nao alteram um vinculo existente.
+    // Pedido cruzado: os dois lados ja pediram — intencao mutua provada.
+    // Confirma a amizade e avisa o outro lado com contact_accept.
+    if (existing?.state === 'outgoing') {
+      const c = {
+        ...existing, state: 'friend', updatedAt: Date.now(),
+        profile: { ...existing.profile, ...body?.profile },
+      };
+      await st().putContact(c);
+      p2pTransport.sendToPeer(fromPeerId, 'contact_accept', { profile: identity.publicUser() });
+      return c;
+    }
+    // Pedidos repetidos nao alteram um vinculo existente.
     if (existing && existing.state !== 'removed') return existing;
     const c = {
       pubkey: fromPeerId, state: 'incoming',
