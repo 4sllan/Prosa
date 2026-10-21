@@ -72,6 +72,7 @@
         </span>
         <span class="acts">
           <button @click="toggleMute" :title="rtc.muted ? 'Desmutar microfone' : 'Mutar microfone'"><MicOff v-if="rtc.muted" :size="16" aria-hidden="true" /><Mic v-else :size="16" aria-hidden="true" /></button>
+          <button @click="toggleSpeaker" :title="rtc.speakerMuted ? 'Ativar alto-falante' : 'Desativar alto-falante'"><VolumeX v-if="rtc.speakerMuted" :size="16" aria-hidden="true" /><Volume2 v-else :size="16" aria-hidden="true" /></button>
           <button v-if="store.user?.isAdmin" @click="view = 'admin'" title="Admin"><Shield :size="16" aria-hidden="true" /></button>
           <button @click="showUserSettings = true" title="Configurações"><Settings :size="16" aria-hidden="true" /></button>
         </span>
@@ -185,7 +186,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { store, selectCommunity, openChannel, loadCommunities, loadDms, loadRelationships, presenceOf, fullUrl } from '../stores.js';
 import { communities, dms, misc, contacts, messages } from '../services/index.js';
 import logoUrl from '../assets/logotipo-prosa.png';
-import { rtc, joinVoice, leaveVoice, toggleMute } from '../rtc.js';
+import { rtc, joinVoice, leaveVoice, toggleMute, toggleSpeaker } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
 import VoiceBar from '../components/VoiceBar.vue';
 import FriendsPanel from '../components/FriendsPanel.vue';
@@ -194,7 +195,7 @@ import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
 import ContextMenu from '../components/ContextMenu.vue';
-import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Smile, Volume2, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban } from 'lucide-vue-next';
+import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Smile, Volume2, VolumeX, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();

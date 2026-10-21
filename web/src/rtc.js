@@ -10,6 +10,7 @@ export const rtc = reactive({
   screenStream: null,
   muted: false,
   deafened: false,
+  speakerMuted: false,
   video: false,
   screen: false,
   remoteStreams: {}, // `${channelId}:${userId}` -> MediaStream
@@ -112,7 +113,7 @@ export async function leaveVoice() {
   rtc.localStream?.getTracks().forEach(t => t.stop());
   rtc.screenStream?.getTracks().forEach(t => t.stop());
   rtc.localStream = null; rtc.screenStream = null;
-  rtc.channelId = null; rtc.video = false; rtc.screen = false; rtc.muted = false; rtc.deafened = false;
+  rtc.channelId = null; rtc.video = false; rtc.screen = false; rtc.muted = false; rtc.deafened = false; rtc.speakerMuted = false;
 }
 
 export function toggleMute() {
@@ -168,4 +169,10 @@ export function toggleDeafen() {
   if (rtc.deafened && !rtc.muted) toggleMute();
   if (!rtc.deafened && rtc.muted) toggleMute();
   events.updateVoice(rtc.channelId, { deafened: rtc.deafened });
+}
+
+export function toggleSpeaker() {
+  rtc.speakerMuted = !rtc.speakerMuted;
+  if (!rtc.speakerMuted && rtc.deafened) toggleDeafen();
+  if (rtc.channelId) events.updateVoice(rtc.channelId, { speakerMuted: rtc.speakerMuted });
 }

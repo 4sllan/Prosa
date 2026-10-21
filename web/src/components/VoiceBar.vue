@@ -8,12 +8,13 @@
         <span class="who">você <MicOff v-if="rtc.muted" :size="12" aria-hidden="true" /> <ScreenShare v-if="rtc.screen" :size="12" aria-hidden="true" /></span>
       </div>
       <div v-for="v in others" :key="v.userId" class="voice-tile">
-        <video :ref="el => setRemote(el, v.userId)" autoplay playsinline :muted="rtc.deafened"></video>
+        <video :ref="el => setRemote(el, v.userId)" autoplay playsinline :muted="rtc.deafened || rtc.speakerMuted"></video>
         <span class="who">{{ nameOf(v.userId) }} <MicOff v-if="v.muted" :size="12" aria-hidden="true" /> <ScreenShare v-if="v.screen" :size="12" aria-hidden="true" /></span>
       </div>
     </div>
     <div class="voice-controls">
       <button :class="{ on: !rtc.muted }" @click="toggleMute"><MicOff v-if="rtc.muted" :size="14" aria-hidden="true" /><Mic v-else :size="14" aria-hidden="true" /> {{ rtc.muted ? 'Mudo' : 'Microfone' }}</button>
+      <button :class="{ on: !rtc.speakerMuted }" @click="toggleSpeaker"><VolumeX v-if="rtc.speakerMuted" :size="14" aria-hidden="true" /><Volume2 v-else :size="14" aria-hidden="true" /> {{ rtc.speakerMuted ? 'Sem som' : 'Alto-falante' }}</button>
       <button :class="{ on: rtc.video }" @click="toggleVideo"><Video :size="14" aria-hidden="true" /> Câmera</button>
       <button :class="{ on: rtc.screen }" @click="toggleScreen"><ScreenShare :size="14" aria-hidden="true" /> Tela</button>
       <button :class="{ on: rtc.deafened }" @click="toggleDeafen"><HeadphoneOff :size="14" aria-hidden="true" /> Surdo</button>
@@ -25,8 +26,8 @@
 <script setup>
 import { computed, ref, watch, nextTick } from 'vue';
 import { store } from '../stores.js';
-import { rtc, toggleMute, toggleVideo, toggleScreen, toggleDeafen, leaveVoice } from '../rtc.js';
-import { Volume2, Mic, MicOff, Video, ScreenShare, HeadphoneOff } from 'lucide-vue-next';
+import { rtc, toggleMute, toggleSpeaker, toggleVideo, toggleScreen, toggleDeafen, leaveVoice } from '../rtc.js';
+import { Volume2, VolumeX, Mic, MicOff, Video, ScreenShare, HeadphoneOff } from 'lucide-vue-next';
 
 const localVideo = ref(null);
 const others = computed(() => (store.voice[rtc.channelId] || []).filter(v => v.userId !== store.user.id));
