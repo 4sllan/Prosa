@@ -62,7 +62,7 @@ inspecao. Nao dependa de `docs/docs.md`, que nao existe na base desta adaptacao.
 | Electron | `web/desktop/main.cjs`, `preload.cjs`, `identity.cjs`, `store.cjs` |
 | Backend Node.js | `server/src/index.js`, `config.js`, `auth.js`, `permissions.js`, `routes/` |
 | Realtime | `server/src/realtime.js`, WebSocket `/ws` |
-| Persistencia | `server/src/db.js` (SQLite/WAL), store local P2P no Electron |
+| Persistencia | `server/src/db.js` (SQLite/WAL), `docker-compose.yml` (Postgres local; backend ainda nao integrado), store local P2P no Electron |
 | Testes | `server/test/api.test.js`, `web/test/p2p.test.js` |
 | Especificacoes e planos | `docs/specs/<slug>.md`, `docs/specs/<slug>-tasks.md` |
 
@@ -200,16 +200,19 @@ Execute os comandos a partir da raiz, conforme o impacto da task:
 | `npm --prefix web test` | Suite P2P do frontend |
 | `npm run build` | Build Vue/Vite; nao valida o app Electron empacotado |
 | `git diff --check` | Erros de whitespace no diff rastreado |
+| `docker compose config` | Valida o compose e a expansao de variaveis do `.env` |
+| `docker compose up -d db` | Sobe o Postgres local; saude em `docker compose ps` |
 
-Confirme runtime e dependencias antes de executar; a base usa Node.js 24.
+Confirme runtime e dependencias antes de executar; a base usa Node.js 24 e o
+Postgres local sobe via Docker Compose.
 Nao instale pacotes automaticamente se isso exigir acesso a rede ou mudar o
 escopo aprovado. Para tarefas apenas documentais, revise caminhos, comandos,
 coerencia e diff; suites de runtime nao sao obrigatorias.
 
 Testes devem usar dados descartaveis e isolados. A suite atual do servidor
 define `DATA_DIR` temporario antes de importar o app; mantenha essa protecao e
-confira qualquer teste novo. Nunca rode migracoes contra dados reais para
-"validar" uma task.
+confira qualquer teste novo. Nunca rode migracoes contra dados reais — nem o
+SQLite em `data/` nem o Postgres do docker-compose — para "validar" uma task.
 
 Para UI/Electron/WebRTC, descreva o roteiro manual e registre o que foi realmente
 observado. Separe resultado automatizado de teste manual pendente. Se um comando
@@ -220,9 +223,11 @@ nao puder ser executado, informe o motivo e o impacto na validacao.
 - Nao leia nem reproduza `.env`, tokens, cookies, chaves privadas ou dados de
   usuarios sem necessidade e autorizacao. Prefira `.env.example` e nomes de
   variaveis. Higienize logs e evidencias, especialmente SDP e dados de rede.
-- Trate `data/`, perfis Electron e identidades como dados do usuario. Nao apague,
-  substitua nem migre dados reais; operacoes destrutivas exigem aprovacao
-  especifica, mesmo dentro de uma task autorizada.
+- Trate `data/`, o volume `prosa-pgdata` do docker-compose, perfis Electron e
+  identidades como dados do usuario. Nao apague, substitua nem migre dados
+  reais — `docker compose down -v` destrói o banco local e exige aprovacao
+  especifica, como qualquer operacao destrutiva, mesmo dentro de uma task
+  autorizada.
 - Em retomadas, leia spec/plano e procure a aprovacao explicita no contexto
   disponivel. Status no arquivo sozinho nao prova autorizacao. Se nao for
   possivel confirmar o gate, peca confirmacao apenas do proximo passo.
