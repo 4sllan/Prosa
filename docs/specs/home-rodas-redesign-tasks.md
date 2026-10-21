@@ -1,8 +1,8 @@
 # Tasks — Redesign da Home (rail, sidebar com RODAS e hero)
 
-- Status geral: concluida
+- Status geral: em andamento (T5 adicionada após conclusão de T1–T4)
 - Spec de referência: `docs/specs/home-rodas-redesign.md` (aprovada)
-- Ordem de execução: T1 → T2 → T3 → T4
+- Ordem de execução: T1 → T2 → T3 → T4 → T5
 
 ## T1 — Sidebar: seção RODAS com amigos + botão de mic na userbar
 
@@ -182,3 +182,68 @@
     e dot de presença em perfil com contatos (CA-01 — markup inalterado,
     verificado por inspeção); propagação de `updateVoice` dentro de voz
     (guarda `if (rtc.channelId)` preserva o caminho existente).
+
+## T5 — Menu de contexto de amigo (RODAS) conforme mock
+
+- Status: aguardando validação
+- Requisitos/aceite: menu de contexto do item de RODAS conforme imagem
+  anexada — painel escuro (~270px, radius ~14px), itens com label à
+  esquerda e ícone à direita, divisor antes da zona de perigo; lista na
+  ordem pedida pelo usuário:
+  1. Marcar como lida
+  2. Perfil
+  3. Silenciar @<username> (nome dinâmico do contato)
+  4. Pin
+  5. Convidar para comunidade
+  6. Desfazer conexão
+  7. Bloquear contato (danger, vermelho, ícone à direita)
+- Dependências: T1 (seção RODAS usa `friendMenu`)
+- Escopo e arquivos prováveis:
+  - `web/src/components/ContextMenu.vue` — suporte a `icon` e
+    `{ divider: true }` nos items; estilo do mock.
+  - `web/src/views/HomeView.vue` — `friendMenuItems` vira função do
+    contato alvo (para interpolar o nome em "Silenciar @…");
+    `onFriendMenuSelect` com os novos `value`s; imports de ícones.
+- Implementação:
+  - `ContextMenu.vue`: `v-for` com `<template>` suportando
+    `item.divider` (`.ctx-sep`, `role="separator"`) e `item.icon`
+    (`<component :is>` à direita, `justify-content: space-between`);
+    estilo: min-width ~268px, padding 8px, radius 14px, fundo
+    `var(--acai-700)`, sombra `0 16px 40px #0009`; danger `#F14A4A`
+    com hover `#f14a4a1a`; manter `role="menu"/menuitem`, foco,
+    Esc/backdrop e `menuPosition` existentes.
+  - `friendMenuItems(user)`: valores `read`, `profile`, `mute`, `pin`,
+    `invite`, `remove` ("Desfazer conexão" — mesma ação de hoje,
+    `contacts.remove`), `block` ("Bloquear contato" — `contacts.block`)
+    com `danger: true`; divisor antes de "Desfazer conexão".
+  - `onFriendMenuSelect`: `read` → `services.messages.markRead` no
+    canal da DM do contato (`store.dms.find(d => d.recipients[0]?.id
+    === userId)?.id`; no P2P `markRead` é no-op — manter chamada);
+    `remove`/`block` → `contacts.*` + `loadRelationships()` como hoje;
+    `profile`, `mute`, `pin`, `invite` → sem efeito (features
+    inexistentes) ou ocultos — decidir na execução; o mock mostra os
+    itens, então preferência é renderizar e não disparar ação.
+- Testes e comandos de validação:
+  - `npm run build`, `git diff --check`.
+  - Manual/headless: botão direito num item de RODAS (perfil com
+    contato) → menu renderiza como o mock; "Desfazer conexão" e
+    "Bloquear contato" executam e recarregam a lista; itens sem
+    feature não lançam erro; Esc/backdrop/scroll fecham.
+- Critério de conclusão: menu renderiza conforme o mock; `read`,
+  `remove` e `block` funcionam (ou estão documentados quando P2P não
+  suporta); demais itens presentes sem efeito.
+- Evidências:
+  - Arquivos alterados: `web/src/components/ContextMenu.vue` (items
+    com `icon` à direita e `divider`; estilo do mock — min-width 268px,
+    fundo `acai-700`, radius 14px, danger `#F14A4A` com hover
+    `#f14a4a1a`; mantidos role=menu/menuitem, foco, Esc/backdrop e
+    `menuPosition`), `web/src/views/HomeView.vue` (`friendMenuItems`
+    virou computed do contato — "Silenciar @<username>" dinâmico;
+    `onFriendMenuSelect` com `read` → `messages.markRead` da DM,
+    `remove`/`block` → contacts + reload; `profile`/`mute`/`pin`/
+    `invite` renderizam sem efeito; ícones CheckCheck/UserRound/
+    BellOff/Pin/UserPlus/Link2Off/Ban).
+  - `npm run build`: ok. `git diff --check`: limpo.
+  - Pendente: observação visual do menu — exige perfil com contato em
+    RODAS para abrir o context menu (headless com perfil limpo não
+    cobre).

@@ -183,7 +183,7 @@
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { store, selectCommunity, openChannel, loadCommunities, loadDms, loadRelationships, presenceOf, fullUrl } from '../stores.js';
-import { communities, dms, misc, contacts } from '../services/index.js';
+import { communities, dms, misc, contacts, messages } from '../services/index.js';
 import logoUrl from '../assets/logotipo-prosa.png';
 import { rtc, joinVoice, leaveVoice, toggleMute } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
@@ -194,7 +194,7 @@ import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
 import ContextMenu from '../components/ContextMenu.vue';
-import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Smile, Volume2, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower } from 'lucide-vue-next';
+import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Smile, Volume2, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -275,17 +275,31 @@ async function openFriendDm(uid) {
 }
 
 const menu = ref({ open: false, x: 0, y: 0, userId: null });
-const friendMenuItems = [
-  { label: 'Bloquear', value: 'block' },
-  { label: 'Remover amigo', value: 'remove', danger: true },
-];
+const friendMenuItems = computed(() => {
+  const r = store.relationships.find(x => x.user.id === menu.value.userId);
+  const uname = r?.user.username || r?.user.displayName || (menu.value.userId || '').slice(0, 12);
+  return [
+    { label: 'Marcar como lida', value: 'read', icon: CheckCheck },
+    { label: 'Perfil', value: 'profile', icon: UserRound },
+    { label: `Silenciar @${uname}`, value: 'mute', icon: BellOff },
+    { label: 'Pin', value: 'pin', icon: Pin },
+    { label: 'Convidar para comunidade', value: 'invite', icon: UserPlus },
+    { divider: true },
+    { label: 'Desfazer conexão', value: 'remove', icon: Link2Off },
+    { label: 'Bloquear contato', value: 'block', icon: Ban, danger: true },
+  ];
+});
 function friendMenu(userId, e) {
   menu.value = { open: true, x: e.clientX, y: e.clientY, userId };
 }
 async function onFriendMenuSelect(item) {
   try {
-    if (item.value === 'block') await contacts.block(menu.value.userId);
+    if (item.value === 'read') {
+      const dm = store.dms.find(d => d.recipients?.[0]?.id === menu.value.userId);
+      if (dm) await messages.markRead(dm.id, {});
+    } else if (item.value === 'block') await contacts.block(menu.value.userId);
     else if (item.value === 'remove') await contacts.remove(menu.value.userId);
+    // 'profile', 'mute', 'pin' e 'invite' aguardam as features correspondentes
     await loadRelationships();
   } catch (e) { alert(e.message); }
 }

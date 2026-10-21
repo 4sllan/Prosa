@@ -1,8 +1,13 @@
 <template>
   <div class="ctx-backdrop" @pointerdown="close" @contextmenu.prevent="close"></div>
   <div ref="menuEl" class="ctx-menu" role="menu" :style="menuStyle" @keydown="onMenuKeydown">
-    <button v-for="item in items" :key="item.label" role="menuitem" class="ctx-item"
-            :class="{ danger: item.danger }" @click="pick(item)">{{ item.label }}</button>
+    <template v-for="(item, i) in items" :key="item.label || `sep${i}`">
+      <div v-if="item.divider" class="ctx-sep" role="separator"></div>
+      <button v-else role="menuitem" class="ctx-item" :class="{ danger: item.danger }" @click="pick(item)">
+        {{ item.label }}
+        <component :is="item.icon" v-if="item.icon" :size="16" aria-hidden="true" />
+      </button>
+    </template>
   </div>
 </template>
 
@@ -13,7 +18,7 @@ import { menuPosition } from '../services/context-menu.js';
 const props = defineProps({
   x: { type: Number, required: true },
   y: { type: Number, required: true },
-  items: { type: Array, required: true }, // [{ label, danger?, value? }]
+  items: { type: Array, required: true }, // [{ label, danger?, value?, icon?, divider? }]
 });
 const emit = defineEmits(['close', 'select']);
 
@@ -66,12 +71,21 @@ onBeforeUnmount(() => {
 <style scoped>
 .ctx-backdrop { position: fixed; inset: 0; z-index: 60; }
 .ctx-menu {
-  position: fixed; z-index: 61; min-width: 160px; padding: 6px;
-  background: var(--bg-side); border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: 0 16px 40px #0008; display: flex; flex-direction: column; gap: 2px;
+  position: fixed; z-index: 61; min-width: 268px; padding: 8px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 20px 50px 0 rgba(0, 0, 0, 0.50);
+  backdrop-filter: blur(12px);
+  display: flex; flex-direction: column; gap: 2px;
 }
-.ctx-item { text-align: left; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: var(--fg); }
-.ctx-item:hover, .ctx-item:focus-visible { background: var(--accent); color: #fff; outline: none; }
-.ctx-item.danger { color: var(--danger); }
-.ctx-item.danger:hover, .ctx-item.danger:focus-visible { background: var(--danger); color: #fff; }
+.ctx-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  text-align: left; padding: 11px 12px; border-radius: 9px; font-size: 14px; color: var(--fg);
+}
+.ctx-item:hover, .ctx-item:focus-visible { background: var(--bg-input); outline: none; }
+.ctx-item.danger { color: #F14A4A; }
+.ctx-item.danger:hover, .ctx-item.danger:focus-visible { background: #f14a4a1a; color: #F14A4A; }
+.ctx-sep { border-top: 1px solid var(--border); margin: 6px 4px; }
+[data-theme="light"] .ctx-menu { background: rgba(255, 255, 255, 0.75); border-color: rgba(0, 0, 0, 0.08); }
 </style>
