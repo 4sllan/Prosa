@@ -1,5 +1,5 @@
 <template>
-  <div class="shell" :class="{ 'chat-open': mobileChat || view === 'friends' }">
+  <div class="shell" :class="{ 'chat-open': mobileChat || view === 'conexoes' }">
     <!-- Rail de comunidades -->
     <nav class="rail">
       <button class="rail-item" :class="{ active: homeSidebar }" @click="goHome" title="Início"><House :size="20" aria-hidden="true" /></button>
@@ -25,8 +25,8 @@
       </div>
       <div class="side-body">
         <template v-if="homeSidebar">
-          <div class="cat-name">Amigos <button @click="view = 'friends'" title="Ver amigos"><ArrowRight :size="12" aria-hidden="true" /></button></div>
-          <div class="chan" @click="view = 'friends'" :class="{ active: view === 'friends' }"><span class="nav-ic"><Smile :size="14" aria-hidden="true" /></span>Amigos</div>
+          <div class="cat-name">Amigos <button @click="view = 'conexoes'" title="Ver amigos"><ArrowRight :size="12" aria-hidden="true" /></button></div>
+          <div class="chan" @click="view = 'conexoes'" :class="{ active: view === 'conexoes' }"><span class="nav-ic"><RadioTower :size="14" aria-hidden="true" /></span>Conexões</div>
           <div class="cat-name">Rodas</div>
           <div v-for="r in friends" :key="r.id" class="dm-item"
                @click="openFriendDm(r.user.id)" @contextmenu.prevent="friendMenu(r.user.id, $event)">
@@ -81,10 +81,9 @@
 
     <!-- Main -->
     <main class="main">
-      <template v-if="view === 'friends'">
+      <template v-if="view === 'conexoes'">
         <button class="friends-back" @click="goHome"><ArrowLeft :size="14" aria-hidden="true" /> Voltar às conversas</button>
-        <PairingPanel />
-        <FriendsPanel />
+        <ConnectionsView @open-dm="openFriendDm" />
       </template>
       <template v-else-if="view === 'admin'"><AdminPanel /></template>
       <template v-else-if="activeChannel">
@@ -120,7 +119,7 @@
             </button>
           </div>
           <div class="hero-sep"></div>
-          <button class="hero-cta" @click="view = 'friends'">Começar uma nova conversa</button>
+          <button class="hero-cta" @click="view = 'conexoes'">Começar uma nova conversa</button>
         </div>
         <div class="hero-badges">
           <span><Link2 :size="12" aria-hidden="true" /> Conexões seguras</span>
@@ -190,13 +189,12 @@ import logoUrl from '../assets/logotipo-prosa.png';
 import { rtc, joinVoice, leaveVoice, toggleMute, toggleSpeaker } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
 import VoiceBar from '../components/VoiceBar.vue';
-import FriendsPanel from '../components/FriendsPanel.vue';
-import PairingPanel from '../components/PairingPanel.vue';
+import ConnectionsView from '../components/ConnectionsView.vue';
 import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
 import ContextMenu from '../components/ContextMenu.vue';
-import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Smile, Volume2, VolumeX, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban, Unplug } from 'lucide-vue-next';
+import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Volume2, VolumeX, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban, Unplug } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -223,8 +221,8 @@ const channelTitle = computed(() => {
 });
 
 const friends = computed(() => store.relationships.filter(r => r.type === 'friend'));
-// aside identico em 'home' (Conversas) e 'friends' (Amigos/Rede P2P)
-const homeSidebar = computed(() => view.value === 'home' || view.value === 'friends');
+// aside identico em 'home' (Conversas) e 'conexoes' (Conexões/Rede P2P)
+const homeSidebar = computed(() => ['home', 'conexoes'].includes(view.value));
 const canManage = computed(() => ['owner', 'admin'].includes(store.currentCommunity?.myRole));
 const myPresence = computed(() => localStorage.getItem('prosa_presence') || 'online');
 const presenceLabel = computed(() => ({ online: 'Disponível', idle: 'Ausente', dnd: 'Ocupado', invisible: 'Invisível' }[myPresence.value]));
