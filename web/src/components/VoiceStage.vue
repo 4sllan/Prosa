@@ -9,15 +9,15 @@
       <Volume2 :size="42" aria-hidden="true" />
       <p>Ninguém na chamada — seja o primeiro a entrar.</p>
     </div>
-    <div v-else class="voice-grid">
-      <div v-for="v in members" :key="v.userId" class="voice-tile" :class="{ speaking: rtc.speaking[v.userId] }">
-        <video v-if="v.userId === store.user?.id && (rtc.video || rtc.screen)" ref="localVideo" autoplay muted playsinline></video>
+    <div v-else class="voice-grid" :class="{ 'is-single': members.length === 1 }" :style="{ '--stage-columns': Math.ceil(Math.sqrt(members.length)) }">
+      <div v-for="v in members" :key="v.userId" class="voice-tile" :class="{ speaking: rtc.speaking[v.userId], 'sharing-screen': v.userId === store.user?.id ? rtc.screen : v.screen }">
+        <video v-if="v.userId === store.user?.id && (rtc.video || rtc.screen)" :ref="setLocalVideo" autoplay muted playsinline></video>
         <video v-else-if="v.userId !== store.user?.id" v-show="v.video || v.screen" :ref="el => setRemote(el, v.userId)" autoplay playsinline :muted="rtc.deafened || rtc.speakerMuted"></video>
         <span v-if="v.userId === store.user?.id ? !(rtc.video || rtc.screen) : !(v.video || v.screen)" class="avatar">
           <img v-if="avatarOf(v.userId)" :src="fullUrl(avatarOf(v.userId))">
           <template v-else>{{ initials(nameOf(v.userId)) }}</template>
         </span>
-        <span class="who">{{ v.userId === store.user?.id ? 'você' : nameOf(v.userId) }}
+        <span class="who"><span class="participant-name">{{ v.userId === store.user?.id ? 'você' : nameOf(v.userId) }}</span>
           <MicOff v-if="v.muted" :size="12" aria-hidden="true" /> <ScreenShare v-if="v.screen" :size="12" aria-hidden="true" />
         </span>
       </div>
@@ -37,14 +37,15 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue';
+import { computed, watch, nextTick } from 'vue';
 import { store, fullUrl } from '../stores.js';
 import { rtc, toggleMute, toggleSpeaker, toggleVideo, toggleScreen, toggleDeafen, leaveVoice } from '../rtc.js';
 import { Volume2, VolumeX, Mic, MicOff, Video, ScreenShare, HeadphoneOff } from 'lucide-vue-next';
 
 const props = defineProps({ channel: Object });
 
-const localVideo = ref(null);
+let localVideo = null;
+const localStream = computed(() => rtc.screen ? rtc.screenStream : rtc.video ? rtc.localStream : null);
 const members = computed(() => store.voice[props.channel.id] || []);
 const inThisChannel = computed(() => rtc.channelId === props.channel.id);
 
@@ -75,9 +76,17 @@ watch(() => rtc.remoteStreams, async () => {
   }
 }, { deep: true });
 
-watch(localVideo, (el) => { if (el) el.srcObject = rtc.screen ? rtc.screenStream : rtc.localStream; });
-watch(() => [rtc.video, rtc.screen], async () => {
-  await nextTick();
-  if (localVideo.value) localVideo.value.srcObject = rtc.screen ? rtc.screenStream : rtc.localStream;
-});
+function syncLocalVideo() {
+  if (localVideo && localVideo.srcObject !== localStream.value) {
+    localVideo.srcObject = localStream.value;
+  }
+}
+
+function setLocalVideo(el) {
+  if (localVideo && localVideo !== el) localVideo.srcObject = null;
+  localVideo = el;
+  syncLocalVideo();
+}
+
+watch(localStream, syncLocalVideo, { flush: 'post' });
 </script>
