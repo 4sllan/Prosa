@@ -189,6 +189,26 @@
       </div>
     </div>
 
+    <div v-if="inviteFor" class="modal-bg" @click.self="inviteFor = null">
+      <div class="modal">
+        <h2>Convidar {{ inviteFriend?.displayName || 'amigo' }} para comunidade</h2>
+        <div class="invite-list">
+          <button v-for="c in inviteSpaces" :key="c.id" class="invite-item"
+                  :disabled="!!c.disabled || inviteBusy" @click="inviteTo(c)">
+            <span class="avatar" style="width:28px;height:28px;font-size:12px">
+              <img v-if="c.iconUrl" :src="fullUrl(c.iconUrl)">
+              <template v-else>{{ initials(c.name) }}</template>
+            </span>
+            <span class="grow">{{ c.name }}</span>
+            <span v-if="c.disabled" class="invite-why">{{ c.disabled }}</span>
+          </button>
+          <div v-if="!inviteSpaces.length" style="color:var(--fg-dim);font-size:13px">Nenhuma comunidade disponível.</div>
+        </div>
+        <p v-if="inviteError" class="invite-err">{{ inviteError }}</p>
+        <div class="actions"><button class="btn ghost" @click="inviteFor = null">Cancelar</button></div>
+      </div>
+    </div>
+
     <CommunitySettings v-if="showCommunitySettings" :community="store.currentCommunity" @close="showCommunitySettings = false" />
     <UserSettings v-if="showUserSettings" @close="showUserSettings = false" />
     <ContextMenu v-if="menu.open" :x="menu.x" :y="menu.y" :items="friendMenuItems"
@@ -199,7 +219,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { store, selectCommunity, openChannel, loadCommunities, loadDms, loadRelationships, presenceOf, fullUrl } from '../stores.js';
+import { store, selectCommunity, openChannel, loadCommunities, loadDms, loadRelationships, presenceOf, fullUrl, pushNotification } from '../stores.js';
 import { communities, dms, misc, contacts, messages } from '../services/index.js';
 import { p2pTransport } from '../services/p2p/transport.js';
 import logoUrl from '../assets/logotipo-prosa.png';
@@ -225,6 +245,7 @@ const groupName = ref(''), groupSel = ref([]);
 const searchQ = ref(''), searchResults = ref(null);
 const voiceSwitch = ref(null);
 const chatOpen = ref(false);
+const inviteFor = ref(null), inviteBusy = ref(false), inviteError = ref('');
 let searchTimer = null;
 
 const activeChannel = computed(() =>
@@ -275,6 +296,16 @@ const currentVoiceName = computed(() =>
   rtc.channelName || store.channels.find(c => c.id === rtc.channelId)?.name || 'canal atual'
 );
 const isDm = computed(() => ['dm', 'group_dm'].includes(activeChannel.value?.type));
+const inviteFriend = computed(() =>
+  store.relationships.find(r => r.user.id === inviteFor.value)?.user
+);
+// espaços do rail com motivo de indisponibilidade para o amigo alvo
+const inviteSpaces = computed(() => store.communities.map(c => ({
+  ...c,
+  disabled: c.members?.some(m => m.user.id === inviteFor.value)
+    ? 'já é membro'
+    : c.myRole !== 'owner' ? 'apenas administradores podem convidar' : null,
+})));
 
 function goHome() { view.value = 'home'; store.currentCommunity = null; store.activeChannelId = null; mobileChat.value = false; }
 
@@ -349,9 +380,23 @@ async function onFriendMenuSelect(item) {
     } else if (item.value === 'block') await contacts.block(menu.value.userId);
     else if (item.value === 'disconnect') p2pTransport.dropPeer(menu.value.userId, 'user-disconnect');
     else if (item.value === 'remove') await contacts.remove(menu.value.userId);
-    // 'profile', 'mute', 'pin' e 'invite' aguardam as features correspondentes
+    else if (item.value === 'invite') { inviteFor.value = menu.value.userId; inviteError.value = ''; return; }
+    // 'profile', 'mute' e 'pin' aguardam as features correspondentes
     await loadRelationships();
   } catch (e) { alert(e.message); }
+}
+
+async function inviteTo(c) {
+  if (inviteBusy.value) return;
+  inviteBusy.value = true; inviteError.value = '';
+  try {
+    await communities.inviteMember(c.id, inviteFor.value);
+    const name = inviteFriend.value?.displayName || 'Amigo';
+    inviteFor.value = null;
+    pushNotification({ type: 'invite', text: `${name} adicionado a ${c.name}` });
+  } catch (e) {
+    inviteError.value = e.message;
+  } finally { inviteBusy.value = false; }
 }
 
 async function createCommunity() {
@@ -398,6 +443,14 @@ function doSearch() {
   }, 300);
 }
 
+// Esc fecha o modal de convite — mesmo padrão do ContextMenu
+watch(inviteFor, (v, _, onCleanup) => {
+  if (!v) return;
+  const h = (e) => { if (e.key === 'Escape') inviteFor.value = null; };
+  window.addEventListener('keydown', h);
+  onCleanup(() => window.removeEventListener('keydown', h));
+});
+
 watch(() => store.activeChannelId, () => { chatOpen.value = false; }, { flush: 'sync' });
 
 // deep-link via /channels/:id
@@ -408,6 +461,16 @@ watch(() => route.params.channelId, async (chId) => {
 
 <style scoped>
 .friends-back { display: none; }
+.invite-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.invite-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  border-radius: 10px; text-align: left; color: var(--fg); font-size: 14px;
+}
+.invite-item:hover:not(:disabled), .invite-item:focus-visible { background: var(--bg-input); outline: none; }
+.invite-item:disabled { opacity: .5; cursor: default; }
+.invite-item .grow { flex: 1; }
+.invite-why { font-size: 12px; color: var(--fg-dim); }
+.invite-err { color: var(--danger); font-size: 13px; margin: 8px 0 0; }
 @media (max-width: 700px) {
   .friends-back { display: block; align-self: flex-start; padding: 12px; color: var(--fg-dim); }
 }

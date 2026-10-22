@@ -10,8 +10,11 @@
     <div v-else class="empty"><div><div class="big"><MessageSquare :size="42" aria-hidden="true" /></div>Carregando {{ store.appName }}…</div></div>
     <div v-for="(n, i) in store.notifications.slice(-3)" :key="n.at" class="toast" :style="{ top: 16 + i * 84 + 'px' }" @click="dismiss(n)">
       <button class="toast-x" title="Fechar" @click.stop="dismiss(n)"><X :size="12" aria-hidden="true" /></button>
-      <b>{{ n.message?.author?.username }}</b> mencionou você
-      <div style="color:var(--fg-dim)">{{ n.message?.content?.slice(0, 90) }}</div>
+      <template v-if="n.text">{{ n.text }}</template>
+      <template v-else>
+        <b>{{ n.message?.author?.username }}</b> mencionou você
+        <div style="color:var(--fg-dim)">{{ n.message?.content?.slice(0, 90) }}</div>
+      </template>
     </div>
   </div>
 </template>

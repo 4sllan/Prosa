@@ -48,6 +48,30 @@ export async function createSpace(identity, { type, name, members = [], channels
   return sp;
 }
 
+// convida um peer para um espaço existente: member.add assinado aos membros
+// atuais + genesis re-emitido pelo convidante via space_invite (mesmo formato
+// do convite por código). O genesis re-emitido não entra no log local —
+// é apenas material de entrega para o convidado.
+export async function inviteToSpace(identity, spaceId, userId) {
+  const store = getLocalStore();
+  const sp = getSpace(spaceId);
+  if (!sp) throw new Error(`Espaço desconhecido: ${spaceId}`);
+  if (sp.type === 'dm') throw new Error('DMs não aceitam membros adicionais');
+  if (sp.members.has(userId)) return { ok: true, already: true };
+  if (!sp.admins?.has(identity.pubKeyHex)) {
+    throw new Error('Apenas administradores podem inserir membros neste espaço');
+  }
+  const { env } = await emitEvent(identity, spaceId, 'member.add', { userId }, store);
+  p2pTransport.broadcast(spaceId, env);
+  p2pTransport.joinSpace(spaceId, userId);
+  const genesis = await makeSignedEnvelope(identity, {
+    spaceId, type: 'space.genesis', seq: 1,
+    body: { meta: sp.meta, admins: [...sp.admins], members: [...sp.members] },
+  });
+  const delivered = p2pTransport.sendToPeer(userId, 'space_invite', { spaceId, genesis }, spaceId);
+  return { ok: true, already: false, genesis, delivered };
+}
+
 // aceita convite de espaço recebido por outro peer
 export async function acceptSpaceInvite(genesis, store) {
   const id = genesis.spaceId;

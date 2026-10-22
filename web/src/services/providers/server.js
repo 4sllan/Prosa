@@ -49,6 +49,7 @@ export function createServerProvider() {
       createInvite: (id, body = {}) => api(`/communities/${id}/invites`, { method: 'POST', body }),
       revokeInvite: (id, code) => api(`/communities/${id}/invites/${code}`, { method: 'DELETE' }),
       acceptInvite: (code) => api(`/communities/invite/${code}/accept`, { method: 'POST' }),
+      inviteMember: () => { throw new Error('communities.inviteMember indisponível no modo server'); },
       kick: (id, uid) => api(`/communities/${id}/members/${uid}/kick`, { method: 'POST' }),
       ban: (id, uid, body = {}) => api(`/communities/${id}/members/${uid}/ban`, { method: 'POST', body }),
       unban: (id, uid) => api(`/communities/${id}/bans/${uid}`, { method: 'DELETE' }),

@@ -223,6 +223,12 @@ export async function initP2PNode({ emitToStore } = {}) {
       // por DC, o estado do contato absorve a duplicata.
       signaling?.onNotify(async (msg) => {
         try {
+          // convite de espaço sem DC — mesmo caminho do controle space_invite
+          if (msg?.kind === 'space_invite' && msg.genesis) {
+            const sp = await acceptSpaceInvite(msg.genesis, store);
+            node.emitToStore?.('spaces.changed', { spaceId: sp?.id });
+            return;
+          }
           if (await contacts.handleHubNotify(identity, msg)) {
             node.emitToStore?.('contacts.changed', { peerId: msg.from });
           }

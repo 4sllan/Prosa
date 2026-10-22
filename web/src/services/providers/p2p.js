@@ -8,7 +8,7 @@ import { p2pTransport } from '../p2p/transport.js';
 import { getLocalConfig } from '../p2p/localconfig.js';
 import * as contacts from '../p2p/contacts.js';
 import { getSpace, spaceProjection, listSpaces, emitEvent, dropSpace } from '../p2p/eventlog.js';
-import { acceptSpaceInvite, createSpace } from '../p2p/spaces.js';
+import { acceptSpaceInvite, createSpace, inviteToSpace } from '../p2p/spaces.js';
 import { sendFile } from '../p2p/files.js';
 
 const node = () => getP2PNode();
@@ -163,6 +163,15 @@ export function createP2PProvider() {
         const genesis = JSON.parse(atob(code));
         const sp = await acceptSpaceInvite(genesis, node().store);
         return { communityId: sp.id };
+      },
+      // insere um amigo num espaço existente (admin only) — space_invite por
+      // DC; sem canal aberto, melhor-esforço via notify do hub (idempotente)
+      inviteMember: async (id, uid) => {
+        const r = await inviteToSpace(me(), id, uid);
+        if (!r.already && !r.delivered) {
+          node().hub?.signaling?.sendNotify(uid, { kind: 'space_invite', genesis: r.genesis }).catch(() => {});
+        }
+        return { ok: true };
       },
       kick: async (id, uid) => {
         const { env } = await emitEvent(me(), id, 'member.remove', { userId: uid }, node().store);

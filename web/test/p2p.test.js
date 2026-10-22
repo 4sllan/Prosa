@@ -9,7 +9,7 @@ import { configureTransport, p2pTransport, resetTransportState, flushPending } f
 import { initLocalStore, getLocalStore } from '../src/services/p2p/localstore.js';
 import { makeSpace, getSpace, emitEvent, applyEvent, validateEnvelope, spaceProjection, listSpaces, dropSpace } from '../src/services/p2p/eventlog.js';
 import { sendSyncReq, handleSyncReq, handleSyncEvent } from '../src/services/p2p/sync.js';
-import { createSpace, acceptSpaceInvite, dmSpaceId, communitySpaceId } from '../src/services/p2p/spaces.js';
+import { createSpace, acceptSpaceInvite, inviteToSpace, dmSpaceId, communitySpaceId } from '../src/services/p2p/spaces.js';
 import * as contacts from '../src/services/p2p/contacts.js';
 import { createPairingOffer, acceptPairingOffer, completePairing, attachChannel, encodePairPayload } from '../src/services/p2p/pairing.js';
 import { makeHello, verifyHello } from '../src/services/p2p/hello.js';
@@ -263,6 +263,80 @@ test('sync: peer atrasado recebe eventos faltantes', async () => {
   const evts = sentToB.filter(x => x === 'sync_event');
   assert.equal(evts.length, 4); // genesis + 3 msgs
   dropSpace(sid);
+});
+
+// ============ convite para espaço existente (member.add + space_invite) ============
+test('inviteToSpace: admin insere membro; genesis entregue recria o espaço no convidado', async () => {
+  resetTransportState();
+  const store = initLocalStore();
+  const a = await testIdentity('admin');
+  const b = await testIdentity('friend');
+  const sp = await createSpace(a, { type: 'community', name: 'comunidade-convite', members: [], channels: ['geral'] });
+
+  configureTransport({ myId: a.pubKeyHex, emitEvent: () => {} });
+  const r = await inviteToSpace(a, sp.id, b.pubKeyHex);
+  assert.equal(r.ok, true);
+  assert.equal(r.already, false);
+  // member.add aplicado na réplica do convidante
+  assert.equal(getSpace(sp.id).members.has(b.pubKeyHex), true);
+  // sem canal aberto: sendToPeer enfileira e informa não-entrega imediata
+  assert.equal(r.delivered, false);
+  // genesis re-emitido tem assinatura válida e já inclui o convidado
+  assert.equal(await verifyEnvelope(r.genesis), true);
+  assert.equal(r.genesis.body.members.includes(b.pubKeyHex), true);
+  assert.ok(r.genesis.body.admins.includes(a.pubKeyHex));
+
+  // lado do convidado: aplica o genesis recebido e entra como membro
+  dropSpace(sp.id);
+  const spB = await acceptSpaceInvite(r.genesis, store);
+  assert.equal(spB.members.has(b.pubKeyHex), true);
+  assert.equal(spB.admins.has(a.pubKeyHex), true);
+  // idempotente: space_invite duplicado (DC + notify) é no-op
+  const again = await acceptSpaceInvite(r.genesis, store);
+  assert.equal(again, spB);
+  dropSpace(sp.id);
+});
+
+test('inviteToSpace: guarda de admin, DM e no-op de já-membro', async () => {
+  resetTransportState();
+  initLocalStore();
+  const a = await testIdentity('owner');
+  const m = await testIdentity('member');
+  const b = await testIdentity('friend');
+  const sp = await createSpace(a, { type: 'community', name: 'comunidade-guarda', members: [m.pubKeyHex], channels: ['geral'] });
+
+  // membro comum não pode inserir terceiros — rejeita antes de emitir evento
+  await assert.rejects(() => inviteToSpace(m, sp.id, b.pubKeyHex), /administradores/);
+  assert.equal(sp.members.has(b.pubKeyHex), false);
+
+  // DM não aceita membros adicionais
+  const dm = await createSpace(a, { type: 'dm', name: 'd', members: [b.pubKeyHex], channels: ['chat'] });
+  await assert.rejects(() => inviteToSpace(a, dm.id, m.pubKeyHex), /DM/);
+
+  // já-membro é no-op informativo: nenhum evento novo do autor
+  const before = spaceProjection(sp.id).byAuthor.get(a.pubKeyHex) || 0;
+  const r = await inviteToSpace(a, sp.id, m.pubKeyHex);
+  assert.equal(r.already, true);
+  assert.equal(spaceProjection(sp.id).byAuthor.get(a.pubKeyHex), before);
+
+  dropSpace(sp.id); dropSpace(dm.id);
+});
+
+test('converge: member.add de não-admin sobre terceiro é ignorado pela projeção', async () => {
+  initLocalStore();
+  const a = await testIdentity('owner');
+  const m = await testIdentity('member');
+  const sp = makeSpace('sp-invite-guard', 'community', { name: 'c' }, [a.pubKeyHex, m.pubKeyHex]);
+  sp.admins = new Set([a.pubKeyHex]);
+
+  const proj = spaceProjection(sp.id);
+  // não-admin tentando adicionar outro usuário: projeção ignora
+  applyEventToProjection(proj, sp, { type: 'member.add', author: m.pubKeyHex, seq: 1, ts: 1, body: { userId: 'novo' }, id: 'e1' });
+  assert.equal(sp.members.has('novo'), false);
+  // admin adicionando: aplica
+  applyEventToProjection(proj, sp, { type: 'member.add', author: a.pubKeyHex, seq: 2, ts: 2, body: { userId: 'novo' }, id: 'e2' });
+  assert.equal(sp.members.has('novo'), true);
+  dropSpace(sp.id);
 });
 
 // ============ pareamento: ICE completo antes do link ============
