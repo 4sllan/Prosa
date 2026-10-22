@@ -1,39 +1,21 @@
-# Postgres local para desenvolvimento do backend Prosa.
-#
-# Uso:
-#   docker compose up -d db        # sobe o Postgres em background
-#   docker compose ps              # status + healthcheck
-#   docker compose logs -f db      # logs
-#   docker compose down            # para o servico (mantem o volume)
-#   docker compose down -v         # DESTRUTIVO: apaga o volume prosa-pgdata
-#
-# Variaveis lidas de .env (com defaults abaixo):
-#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT
-#
-# Conexao a partir do host:
-#   postgres://<user>:<password>@localhost:<port>/<db>
-# ou via DATABASE_URL (ver .env.example). O servidor Node continua rodando
-# fora do Docker (npm run dev); este compose so provisiona o banco.
-
 services:
-  db:
-    image: postgres:17-alpine
-    container_name: prosa-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-prosa}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prosa}
-      POSTGRES_DB: ${POSTGRES_DB:-prosa}
+  mailhog:
+    image: mailhog/mailhog:latest
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - prosa-pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-prosa} -d $${POSTGRES_DB:-prosa}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
+      - '1025:1025'
+      - '8025:8025'
 
-volumes:
-  prosa-pgdata:
+  pgsql:
+    image: postgres:latest
+    ports:
+      - '5432:5432'
+    environment:
+      PGPASSWORD: '${DB_PASSWORD:-secret}'
+      POSTGRES_DB: '${DB_DATABASE}'
+      POSTGRES_USER: '${DB_USERNAME}'
+      POSTGRES_PASSWORD: '${DB_PASSWORD:-secret}'
+
+  redis:
+    image: redis:alpine
+    ports:
+      - '6379:6379'
