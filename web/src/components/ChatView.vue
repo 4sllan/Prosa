@@ -165,7 +165,7 @@ const forwardMsg = ref(null); const forwardTarget = ref('');
 
 const forwardTargets = computed(() => [
   ...store.dms.map(d => ({ id: d.id, label: d.type === 'group_dm' ? `👥 ${d.name}` : (d.recipients[0]?.displayName || d.name || 'DM') })),
-  ...store.channels.filter(c => c.type === 'text').map(c => ({ id: c.id, label: `# ${c.name}` })),
+  ...store.channels.map(c => ({ id: c.id, label: `# ${c.name}` })),
 ]);
 
 const menuItems = computed(() => {

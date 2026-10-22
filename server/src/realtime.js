@@ -82,7 +82,7 @@ function removeSocket(userId, ws) {
 
 export function joinVoice(userId, channelId, state = {}) {
   const { channel } = channelContext(channelId, userId); // validates access
-  if (channel.type !== 'voice') throw Object.assign(new Error('Não é canal de voz'), { status: 400 });
+  if (['dm', 'group_dm'].includes(channel.type)) throw Object.assign(new Error('Não é canal de voz'), { status: 400 });
   leaveAllVoice(userId);
   let room = voiceStates.get(channelId);
   if (!room) { room = new Map(); voiceStates.set(channelId, room); }

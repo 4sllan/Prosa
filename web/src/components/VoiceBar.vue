@@ -31,7 +31,7 @@ import { Volume2, VolumeX, Mic, MicOff, Video, ScreenShare, HeadphoneOff } from 
 
 const localVideo = ref(null);
 const others = computed(() => (store.voice[rtc.channelId] || []).filter(v => v.userId !== store.user.id));
-const channelName = computed(() => store.channels.find(c => c.id === rtc.channelId)?.name || 'voz');
+const channelName = computed(() => rtc.channelName || store.channels.find(c => c.id === rtc.channelId)?.name || 'voz');
 
 function initials(n) { return String(n || '?').slice(0, 2).toUpperCase(); }
 function nameOf(uid) {

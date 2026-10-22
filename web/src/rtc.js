@@ -1,10 +1,11 @@
 import { reactive } from 'vue';
 import { store } from './stores.js';
-import { events } from './services/index.js';
+import { events, misc } from './services/index.js';
 
 // WebRTC mesh: peers = Map<`${channelId}:${userId}`, {pc, stream}>
 export const rtc = reactive({
   channelId: null,
+  channelName: null,
   peers: new Map(),
   localStream: null,
   screenStream: null,
@@ -14,6 +15,7 @@ export const rtc = reactive({
   video: false,
   screen: false,
   remoteStreams: {}, // `${channelId}:${userId}` -> MediaStream
+  speaking: {},    // userId -> bool (detecção local, não propagada)
 });
 
 const myId = () => store.user?.id;
@@ -48,6 +50,7 @@ function dropPeer(channelId, peerId) {
   rtc.peers.get(key)?.pc.close();
   rtc.peers.delete(key);
   delete rtc.remoteStreams[key];
+  analysers.delete(key);
 }
 
 async function offer(channelId, peerId) {
@@ -83,6 +86,7 @@ async function handleSignal({ channelId, from, data }) {
 events.on('SIGNAL', handleSignal);
 
 events.on('VOICE_STATE', ({ channelId, members }) => {
+  store.voice[channelId] = members;
   if (channelId !== rtc.channelId) return;
   const others = members.filter(m => m.userId !== myId());
   const present = new Set(others.map(m => m.userId));
@@ -98,22 +102,81 @@ events.on('VOICE_STATE', ({ channelId, members }) => {
   }
 });
 
-export async function joinVoice(channelId) {
+// ---- indicador local de fala: AnalyserNode por stream, sem propagação ----
+let audioCtx = null, speakTimer = null;
+const analysers = new Map(); // 'self' | `${channelId}:${userId}` -> {analyser, buf, lastSpoke}
+const SPEAK_RMS = 10, SPEAK_HOLD = 400;
+
+function ensureAnalyser(key, stream) {
+  if (!stream || analysers.has(key)) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx ||= new Ctx();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    analysers.set(key, { analyser, buf: new Uint8Array(analyser.fftSize), lastSpoke: 0 });
+  } catch {}
+}
+
+function pollSpeaking() {
+  if (rtc.localStream) ensureAnalyser('self', rtc.localStream);
+  for (const key of Object.keys(rtc.remoteStreams)) ensureAnalyser(key, rtc.remoteStreams[key]);
+  for (const key of [...analysers.keys()]) {
+    if (key !== 'self' && !rtc.remoteStreams[key]) analysers.delete(key);
+  }
+  const next = {};
+  for (const [key, a] of analysers) {
+    a.analyser.getByteTimeDomainData(a.buf);
+    let sum = 0;
+    for (const v of a.buf) { const d = v - 128; sum += d * d; }
+    if (Math.sqrt(sum / a.buf.length) > SPEAK_RMS) a.lastSpoke = Date.now();
+    const uid = key === 'self' ? myId() : key.split(':')[1];
+    next[uid] = Date.now() - a.lastSpoke < SPEAK_HOLD;
+  }
+  const cur = rtc.speaking;
+  const keys = Object.keys(next);
+  if (keys.length !== Object.keys(cur).length || keys.some(uid => cur[uid] !== next[uid])) rtc.speaking = next;
+}
+
+function startSpeaking() {
+  stopSpeaking();
+  speakTimer = setInterval(pollSpeaking, 120);
+}
+
+function stopSpeaking() {
+  if (speakTimer) { clearInterval(speakTimer); speakTimer = null; }
+  analysers.clear();
+  audioCtx?.close().catch(() => {});
+  audioCtx = null;
+  rtc.speaking = {};
+}
+
+export async function joinVoice(channelId, name) {
   if (rtc.channelId === channelId) return;
   await leaveVoice();
   rtc.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  rtc.channelName = name ?? null;
   rtc.channelId = channelId;
   events.joinVoice(channelId);
+  store.voice[channelId] = (await misc.voiceState(channelId)).members;
+  startSpeaking();
 }
 
 export async function leaveVoice() {
   if (!rtc.channelId) return;
-  events.leaveVoice(rtc.channelId);
+  const channelId = rtc.channelId;
+  events.leaveVoice(channelId);
+  const list = store.voice[channelId];
+  if (list) store.voice[channelId] = list.filter(v => v.userId !== myId());
   for (const key of [...rtc.peers.keys()]) { const [ch, uid] = key.split(':'); dropPeer(ch, uid); }
+  stopSpeaking();
   rtc.localStream?.getTracks().forEach(t => t.stop());
   rtc.screenStream?.getTracks().forEach(t => t.stop());
   rtc.localStream = null; rtc.screenStream = null;
-  rtc.channelId = null; rtc.video = false; rtc.screen = false; rtc.muted = false; rtc.deafened = false; rtc.speakerMuted = false;
+  rtc.channelId = null; rtc.channelName = null; rtc.video = false; rtc.screen = false; rtc.muted = false; rtc.deafened = false; rtc.speakerMuted = false;
 }
 
 export function toggleMute() {

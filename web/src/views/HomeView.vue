@@ -45,13 +45,21 @@
               <button v-if="canManage" @click="newChannel(cat.id)" title="Novo canal"><Plus :size="14" aria-hidden="true" /></button>
             </div>
             <template v-for="ch in cat.channels" :key="ch.id">
-              <div class="chan" :class="{ active: activeChannel?.id === ch.id && ch.type === 'text' }" @click="clickChannel(ch)">
-                <span class="hash"><Volume2 v-if="ch.type === 'voice'" :size="16" aria-hidden="true" /><Hash v-else :size="16" aria-hidden="true" /></span>{{ ch.name }}
-                <span v-if="ch.type === 'voice' && voiceCount(ch.id)" style="margin-left:auto;font-size:11px;color:var(--verde-mata)">{{ voiceCount(ch.id) }}</span>
+              <div class="chan" :class="{ active: activeChannel?.id === ch.id || rtc.channelId === ch.id }" @click="clickChannel(ch)">
+                <span class="hash"><Hash :size="16" aria-hidden="true" /></span>{{ ch.name }}
+                <span class="chan-end">
+                  <span v-if="voiceCount(ch.id)" class="vc-count">{{ voiceCount(ch.id) }}</span>
+                  <button class="chan-chat" :class="{ on: chatOpen && activeChannel?.id === ch.id }"
+                          @click.stop="toggleChannelChat(ch)" :title="chatOpen && activeChannel?.id === ch.id ? 'Fechar chat' : 'Abrir chat'"><MessageSquare :size="13" aria-hidden="true" /></button>
+                </span>
               </div>
-              <div v-if="ch.type === 'voice' && store.voice[ch.id]?.length" class="voice-users">
+              <div v-if="store.voice[ch.id]?.length" class="voice-users">
                 <div v-for="v in store.voice[ch.id]" :key="v.userId" class="voice-user">
-                  <span class="avatar" style="width:20px;height:20px;font-size:10px">{{ initials(nameOf(v.userId)) }}</span>
+                  <span class="avatar" style="width:26px;height:26px;font-size:11px">
+                    <img v-if="avatarOf(v.userId)" :src="fullUrl(avatarOf(v.userId))">
+                    <template v-else>{{ initials(nameOf(v.userId)) }}</template>
+                    <span class="dot" :class="presenceOf(v.userId)"></span>
+                  </span>
                   {{ nameOf(v.userId) }} <MicOff v-if="v.muted" :size="12" aria-hidden="true" /><ScreenShare v-if="v.screen" :size="12" aria-hidden="true" />
                 </div>
               </div>
@@ -59,7 +67,6 @@
           </template>
         </template>
       </div>
-      <VoiceBar v-if="rtc.channelId" />
       <div class="userbar">
         <span class="avatar">
           <img v-if="store.user?.avatarUrl" :src="fullUrl(store.user.avatarUrl)">
@@ -89,9 +96,11 @@
       <template v-else-if="activeChannel">
         <div class="topbar">
           <button class="back" @click="mobileChat = false"><ArrowLeft :size="16" aria-hidden="true" /></button>
-          <span class="title">{{ activeChannel.type === 'text' ? '#' : '' }} {{ channelTitle }}</span>
+          <span class="title">{{ isDm ? '' : '#' }} {{ channelTitle }}</span>
           <span class="topic">{{ activeChannel.topic }}</span>
           <input v-model="searchQ" placeholder="Buscar…" @input="doSearch" @keydown.esc="searchQ=''">
+          <button v-if="!isDm" class="chat-toggle" :class="{ on: chatOpen }" @click="chatOpen = !chatOpen"
+                  :title="chatOpen ? 'Fechar chat' : 'Abrir chat'"><MessageSquare :size="16" aria-hidden="true" /></button>
         </div>
         <div v-if="searchResults" class="search-results">
           <div v-for="m in searchResults.messages" :key="m.id" class="hit" @click="searchQ=''">
@@ -100,8 +109,11 @@
           <div v-for="u in searchResults.users" :key="u.id" class="hit"><UserRound :size="14" aria-hidden="true" /> {{ u.displayName }} (@{{ u.username }})</div>
           <div v-if="!searchResults.messages.length && !searchResults.users.length" class="hit">Nada encontrado</div>
         </div>
-        <ChatView v-if="activeChannel.type !== 'voice'" :channel="activeChannel" />
-        <div v-else class="empty"><div><div class="big"><Volume2 :size="42" aria-hidden="true" /></div>Canal de voz — clique em "Entrar" na barra abaixo</div></div>
+        <ChatView v-if="isDm" :channel="activeChannel" />
+        <div v-else class="chat-wrap">
+          <VoiceStage :channel="activeChannel" />
+          <aside v-if="chatOpen" class="chat-aside"><ChatView :channel="activeChannel" /></aside>
+        </div>
       </template>
       <div v-else class="hero">
         <div class="hero-card">
@@ -152,10 +164,15 @@
       <div class="modal">
         <h2>Novo canal</h2>
         <div class="row"><label>Nome</label><input v-model="newChannelName" maxlength="64"></div>
-        <div class="row"><label>Tipo</label>
-          <select v-model="newChannelType"><option value="text">Texto</option><option value="voice">Voz</option></select>
-        </div>
         <div class="actions"><button class="btn ghost" @click="showNewChannel = false">Cancelar</button><button class="btn primary" @click="createChannel">Criar</button></div>
+      </div>
+    </div>
+
+    <div v-if="voiceSwitch" class="modal-bg" @click.self="voiceSwitch = null">
+      <div class="modal">
+        <h2>Trocar de canal de voz?</h2>
+        <p style="margin:0;color:var(--fg-dim)">Você já está conectado ao canal de voz <b style="color:var(--fg)">{{ currentVoiceName }}</b>. Deseja sair dele e entrar no canal <b style="color:var(--fg)">{{ voiceSwitch.name }}</b>?</p>
+        <div class="actions"><button class="btn ghost" @click="voiceSwitch = null">Cancelar</button><button class="btn primary" @click="confirmVoiceSwitch">Confirmar</button></div>
       </div>
     </div>
 
@@ -186,15 +203,15 @@ import { store, selectCommunity, openChannel, loadCommunities, loadDms, loadRela
 import { communities, dms, misc, contacts, messages } from '../services/index.js';
 import { p2pTransport } from '../services/p2p/transport.js';
 import logoUrl from '../assets/logotipo-prosa.png';
-import { rtc, joinVoice, leaveVoice, toggleMute, toggleSpeaker } from '../rtc.js';
+import { rtc, joinVoice, toggleMute, toggleSpeaker } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
-import VoiceBar from '../components/VoiceBar.vue';
+import VoiceStage from '../components/VoiceStage.vue';
 import ConnectionsView from '../components/ConnectionsView.vue';
 import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
 import UserSettings from '../components/UserSettings.vue';
 import ContextMenu from '../components/ContextMenu.vue';
-import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Volume2, VolumeX, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban, Unplug } from 'lucide-vue-next';
+import { House, Plus, Link2, Settings, SquarePen, ArrowRight, Volume2, VolumeX, Hash, Mic, MicOff, ScreenShare, Shield, ShieldCheck, ArrowLeft, UserRound, Users, RadioTower, CheckCheck, BellOff, Pin, UserPlus, Link2Off, Ban, Unplug, MessageSquare } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -203,9 +220,11 @@ const mobileChat = ref(false);
 const showCreate = ref(false), showJoin = ref(false), showNewChannel = ref(false), showNewGroup = ref(false);
 const showCommunitySettings = ref(false), showUserSettings = ref(false);
 const newCommunityName = ref(''), newCommunityDesc = ref(''), inviteCode = ref('');
-const newChannelName = ref(''), newChannelType = ref('text'), newChannelCat = ref(null);
+const newChannelName = ref(''), newChannelCat = ref(null);
 const groupName = ref(''), groupSel = ref([]);
 const searchQ = ref(''), searchResults = ref(null);
+const voiceSwitch = ref(null);
+const chatOpen = ref(false);
 let searchTimer = null;
 
 const activeChannel = computed(() =>
@@ -248,6 +267,14 @@ function nameOf(uid) {
 }
 function dmName(d) { return d.type === 'group_dm' ? d.name : d.recipients[0]?.displayName || 'DM'; }
 function voiceCount(chId) { return store.voice[chId]?.length || 0; }
+function avatarOf(uid) {
+  if (uid === store.user?.id) return store.user.avatarUrl;
+  return store.members.find(m => m.user.id === uid)?.user.avatarUrl;
+}
+const currentVoiceName = computed(() =>
+  rtc.channelName || store.channels.find(c => c.id === rtc.channelId)?.name || 'canal atual'
+);
+const isDm = computed(() => ['dm', 'group_dm'].includes(activeChannel.value?.type));
 
 function goHome() { view.value = 'home'; store.currentCommunity = null; store.activeChannelId = null; mobileChat.value = false; }
 
@@ -257,12 +284,31 @@ async function openCommunity(c) {
 }
 
 async function clickChannel(ch) {
-  if (ch.type === 'voice') {
-    await joinVoice(ch.id);
+  await openChannel(ch.id);
+  mobileChat.value = true;
+  await requestJoinVoice(ch);
+}
+
+async function toggleChannelChat(ch) {
+  if (store.activeChannelId !== ch.id) {
+    await openChannel(ch.id);
     mobileChat.value = true;
+    chatOpen.value = true;
     return;
   }
-  await openChannel(ch.id);
+  chatOpen.value = !chatOpen.value;
+}
+
+async function requestJoinVoice(ch) {
+  if (rtc.channelId && rtc.channelId !== ch.id) { voiceSwitch.value = { id: ch.id, name: ch.name }; return; }
+  await joinVoice(ch.id, ch.name);
+}
+
+async function confirmVoiceSwitch() {
+  const target = voiceSwitch.value;
+  voiceSwitch.value = null;
+  if (!target) return;
+  await joinVoice(target.id, target.name);
   mobileChat.value = true;
 }
 
@@ -332,7 +378,7 @@ function newChannel(catId) { newChannelCat.value = catId; showNewChannel.value =
 
 async function createChannel() {
   if (!newChannelName.value.trim()) return;
-  await communities.createChannel(store.currentCommunity.id, { name: newChannelName.value, type: newChannelType.value, categoryId: newChannelCat.value });
+  await communities.createChannel(store.currentCommunity.id, { name: newChannelName.value, type: 'text', categoryId: newChannelCat.value });
   newChannelName.value = ''; showNewChannel.value = false;
   await selectCommunity(store.currentCommunity);
 }
@@ -351,6 +397,8 @@ function doSearch() {
     searchResults.value = await misc.search(searchQ.value, store.activeChannelId);
   }, 300);
 }
+
+watch(() => store.activeChannelId, () => { chatOpen.value = false; }, { flush: 'sync' });
 
 // deep-link via /channels/:id
 watch(() => route.params.channelId, async (chId) => {
