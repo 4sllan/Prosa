@@ -109,9 +109,22 @@ export function createP2PProvider() {
             type: c.state,
           })),
       }),
-      request: async (pubkey) => contacts.requestContact(me(), { pubkey }),
-      accept: async (peerId) => contacts.acceptContact(me(), peerId),
-      remove: async (peerId) => contacts.removeContact(peerId),
+      request: async (pubkey) => {
+        const r = await contacts.requestContact(me(), { pubkey });
+        // o DC pode não existir ainda — o hub alcança o peer online via Realtime
+        node().hub?.signaling?.sendNotify(pubkey, { kind: 'invite', profile: me().publicUser() }).catch(() => {});
+        return r;
+      },
+      accept: async (peerId) => {
+        const r = await contacts.acceptContact(me(), peerId);
+        node().hub?.signaling?.sendNotify(peerId, { kind: 'relationship', state: 'friend', profile: me().publicUser() }).catch(() => {});
+        return r;
+      },
+      remove: async (peerId) => {
+        const r = await contacts.removeContact(peerId);
+        node().hub?.signaling?.sendNotify(peerId, { kind: 'relationship', state: 'removed' }).catch(() => {});
+        return r;
+      },
       block: async (peerId) => contacts.blockContact(peerId),
       unblock: async (peerId) => contacts.unblockContact(peerId),
     },
@@ -238,7 +251,21 @@ export function createP2PProvider() {
     messages: {
       list: async (chId) => {
         const spaceId = getSpace(chId) ? chId : findSpaceByChannel(chId);
-        return { messages: messagesOf(spaceId, null).map(m => toUiMessage(spaceId, m)) };
+        const local = messagesOf(spaceId, null);
+        const byId = new Map(local.map(m => [m.id, m]));
+        // hub ativo: histórico do Postgres completa o log local (mensagens de
+        // outros dispositivos/anteriores ao log). Falha → só o local (CA-06).
+        try {
+          const history = await node().hub?.persistence?.messagesHistory(spaceId, { limit: 200 });
+          for (const row of history || []) {
+            if (byId.has(row.id)) continue;
+            const m = pgRowToMessage(spaceId, row);
+            byId.set(m.id, m);
+            local.push(m);
+          }
+          local.sort((a, b) => a.ts - b.ts);
+        } catch {}
+        return { messages: local.map(m => toUiMessage(spaceId, m)) };
       },
       send: async (chId, body) => {
         const spaceId = findSpaceByChannel(chId);
@@ -355,6 +382,16 @@ export function createP2PProvider() {
     },
   };
 }
+
+// linha do Postgres -> formato interno da projeção (toUiMessage consome igual)
+const pgRowToMessage = (spaceId, row) => ({
+  id: row.id, spaceId, channelId: row.channel_id, author: row.author,
+  content: row.content, ts: Date.parse(row.created_at) || 0,
+  editedAt: row.edited_at ? Date.parse(row.edited_at) : null,
+  deletedAt: row.deleted_at ? Date.parse(row.deleted_at) : null,
+  replyTo: row.reply_to || null, reactions: {}, pinned: false,
+  attachments: row.attachments || [],
+});
 
 function findSpaceByChannel(chId) {
   for (const sp of listSpaces()) {

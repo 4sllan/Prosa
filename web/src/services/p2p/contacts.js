@@ -134,3 +134,16 @@ export async function broadcastProfile(identity) {
 export async function handleProfile(fromPeerId, body) {
   if (body?.profile) await updateProfile(fromPeerId, body.profile);
 }
+
+// Eventos 'notify' vindos do hub (canal prosa:user:<me>) reaproveitam os
+// handlers acima — todos idempotentes, então a duplicata via DC é absorvida.
+// Retorna true quando o evento foi reconhecido (caller emite contacts.changed).
+export async function handleHubNotify(identity, msg) {
+  if (msg?.kind === 'invite') await handleContactReq(msg.from, { profile: msg.profile }, identity);
+  else if (msg?.kind === 'relationship' && msg.state === 'friend') {
+    await handleContactAccept(msg.from, { profile: msg.profile });
+  } else if (msg?.kind === 'relationship' && msg.state === 'removed') {
+    await handleContactRemove(msg.from);
+  } else return false;
+  return true;
+}

@@ -9,6 +9,10 @@ import { sendSyncReq, handleSyncReq, handleSyncEvent } from './sync.js';
 import { createSpace, acceptSpaceInvite, dmSpaceId } from './spaces.js';
 import * as contacts from './contacts.js';
 import { attachChannel } from './pairing.js';
+import { createPresence } from '../supabase/presence.js';
+import { createSignaling } from '../supabase/signaling.js';
+import { createPersistence } from '../supabase/persistence.js';
+import { createHubPairing } from './pairing-hub.js';
 
 let node = null;
 
@@ -112,7 +116,10 @@ export async function initP2PNode({ emitToStore } = {}) {
               const ok = await validateEnvelope(env).then(v => v.ok).catch(() => false);
               if (ok) {
                 const r = await applyEvent(env, store);
-                if (r.applied) node.emitToStore?.('space.event', { spaceId: env.spaceId, env });
+                if (r.applied) {
+                  node.emitToStore?.('space.event', { spaceId: env.spaceId, env });
+                  node.mirrorEvent(env); // receptores também espelham (D3)
+                }
                 return r.applied;
               }
             }
@@ -152,10 +159,19 @@ export async function initP2PNode({ emitToStore } = {}) {
     peersOnline: () => p2pTransport.peerIds(),
     spaces: () => listSpaces(),
     space: (id) => getSpace(id),
+    // hub Supabase — null quando desligado/indisponível
+    hub: null,
+    watchPresence: (pubkey) => node?.hub?.presence?.watchPeer(pubkey),
+    // espelha um evento aplicado no Postgres — fire-and-forget, nunca bloqueia
+    mirrorEvent: (env) =>
+      node.hub?.persistence?.mirrorEvent(env, getSpace(env.spaceId)).catch(() => {}),
   };
 
   // eventos locais aplicados também notificam a UI (remotos chegam via receive())
-  setLocalEventListener((env) => node?.emitToStore?.('space.event', { spaceId: env.spaceId, env }));
+  setLocalEventListener((env) => {
+    node?.emitToStore?.('space.event', { spaceId: env.spaceId, env });
+    node?.mirrorEvent(env);
+  });
 
   // peers conhecidos: persiste pubkey/fingerprint para re-pareamento posterior
   const rememberPeer = async (peerId, lastState) => {
@@ -181,6 +197,77 @@ export async function initP2PNode({ emitToStore } = {}) {
       await replaySpace(row.id, store);
     }
   }
+
+  // hub Supabase (rendezvous) — opcional e melhor-esforço; sem ele o nó segue
+  // 100% P2P manual. Presença do hub alimenta o mesmo evento 'presence' da UI.
+  try {
+    let pairing = null; // definido junto com o signaling abaixo
+    const presence = createPresence({
+      pubkey: identity.pubKeyHex,
+      profile: identity.publicUser(),
+      onPeer: (peerId, p) => {
+        node.emitToStore?.('presence', { peerId, presence: p });
+        // D2: contato online e sem DC → o lado de menor pubkey oferece
+        if (p === 'online') pairing?.pair(peerId).catch(() => {});
+      },
+    });
+    if (presence) {
+      const signaling = createSignaling({ pubkey: identity.pubKeyHex });
+      const persistence = createPersistence();
+      pairing = signaling && createHubPairing({ node, signaling });
+      node.hub = { presence, signaling, pairing, persistence };
+      persistence?.upsertProfile(identity.pubKeyHex, identity.publicUser());
+
+      // Eventos 'notify' do canal prosa:user:<me> — "acordar" para convites e
+      // relacionamento. Os handlers são idempotentes: se o mesmo controle chegar
+      // por DC, o estado do contato absorve a duplicata.
+      signaling?.onNotify(async (msg) => {
+        try {
+          if (await contacts.handleHubNotify(identity, msg)) {
+            node.emitToStore?.('contacts.changed', { peerId: msg.from });
+          }
+        } catch (e) {
+          logDiag('hub.notify', e?.message || 'err');
+        }
+      });
+
+      // inbox de convites: quem me convidou enquanto eu estava offline
+      if (persistence) {
+        for (const inv of await persistence.pendingInvites(identity.pubKeyHex)) {
+          if (await store.getContact(inv.from_pubkey)) continue;
+          const profile = await persistence.getProfile(inv.from_pubkey);
+          await contacts.handleContactReq(inv.from_pubkey, { profile }, identity);
+          node.emitToStore?.('contacts.changed', { peerId: inv.from_pubkey });
+        }
+      }
+
+      // vigia presença só de quem faz sentido parear — bloqueado/removido não
+      const syncWatch = async (peerId) => {
+        const c = await store.getContact(peerId);
+        if (c && !['blocked', 'removed'].includes(c.state)) presence.watchPeer(peerId);
+        else presence.unwatchPeer(peerId);
+      };
+      for (const c of await contacts.listContacts()) await syncWatch(c.pubkey);
+
+      // mantém a lista de observados alinhada às mudanças de contato e
+      // espelha relationship+invite+perfil do contato no Postgres
+      const emit = node.emitToStore;
+      node.emitToStore = (type, data) => {
+        if (type === 'contacts.changed' && data?.peerId) {
+          syncWatch(data.peerId).catch(() => {});
+          store.getContact(data.peerId)
+            .then(c => c && persistence?.mirrorContact(c, identity.pubKeyHex))
+            .catch(() => {});
+        }
+        return emit?.(type, data);
+      };
+
+      // DC caiu mas o peer segue online no hub → re-pareamento automático
+      p2pTransport.on('peer.closed', ({ peerId }) => {
+        if (presence.stateOf(peerId) === 'online') pairing?.pair(peerId).catch(() => {});
+      });
+    }
+  } catch {}
 
   return node;
 }
