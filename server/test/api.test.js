@@ -140,6 +140,49 @@ test('amigos + DM', async () => {
   assert.ok(list.body.dms.some(d => d.id === dmId));
 });
 
+test('bloquear esconde amizade e desbloquear restaura como amiga nos dois lados', async (t) => {
+  const pair = [];
+  for (const name of ['block_a', 'block_b']) {
+    const r = await api('/api/auth/register', {
+      method: 'POST',
+      body: { username: name, email: `${name}@example.test`, password: 'block-test-password' },
+    });
+    assert.equal(r.status, 201);
+    pair.push(r.body);
+  }
+  const [ua, ub] = pair;
+  const list = async token => (await api('/api/users/@me/relationships', { token })).body.relationships;
+  const bPath = `/api/users/@me/relationships/${ub.user.id}/block`;
+
+  await api('/api/users/@me/relationships', { method: 'POST', token: ua.token, body: { username: 'block_b' } });
+  await api(`/api/users/@me/relationships/${ua.user.id}/accept`, { method: 'POST', token: ub.token });
+  assert.equal((await list(ua.token))[0].type, 'friend');
+  assert.equal((await list(ub.token))[0].type, 'friend');
+
+  const ws = new WebSocket(`ws://localhost:${port}/ws?token=${ub.token}`);
+  t.after(() => ws.terminate());
+  const update = new Promise((res, rej) => {
+    const timer = setTimeout(() => rej(new Error('timeout RELATIONSHIP_UPDATE')), 5000);
+    ws.on('message', raw => {
+      const ev = JSON.parse(raw);
+      if (ev.t === 'RELATIONSHIP_UPDATE') { clearTimeout(timer); res(ev); }
+    });
+  });
+  await new Promise(res => {
+    ws.on('message', function f(raw) {
+      if (JSON.parse(raw).t === 'READY') { ws.off('message', f); res(); }
+    });
+  });
+
+  assert.equal((await api(bPath, { method: 'POST', token: ua.token })).status, 200);
+  assert.equal((await list(ua.token))[0].type, 'blocked');
+
+  assert.equal((await api(bPath, { method: 'DELETE', token: ua.token })).status, 200);
+  assert.equal((await update).t, 'RELATIONSHIP_UPDATE');
+  assert.equal((await list(ua.token))[0].type, 'friend');
+  assert.equal((await list(ub.token))[0].type, 'friend');
+});
+
 test('ban impede reentrada', async () => {
   const betoId = (await api('/api/users/@me', { token: beto })).body.user.id;
   let r = await api(`/api/communities/${cid}/members/${betoId}/ban`, { method: 'POST', token: ana, body: { reason: 'teste' } });
@@ -184,4 +227,68 @@ test('busca', async () => {
   const r = await api('/api/search?q=broadcast', { token: ana });
   assert.equal(r.status, 200);
   assert.ok(r.body.messages.some(m => m.content.includes('broadcast')));
+});
+
+test('cancelar enviada remove pendencia, notifica destinatario e rejeita terceiros', async (t) => {
+  const accounts = [];
+  for (const name of ['cancel_sender', 'cancel_receiver', 'cancel_outsider', 'cancel_other']) {
+    const r = await api('/api/auth/register', {
+      method: 'POST',
+      body: { username: name, email: `${name}@example.test`, password: 'cancel-test-password' },
+    });
+    assert.equal(r.status, 201);
+    accounts.push(r.body);
+  }
+  const [sender, receiver, outsider, other] = accounts;
+  const path = `/api/users/@me/relationships/${receiver.user.id}`;
+  for (const target of [receiver, other]) {
+    const r = await api('/api/users/@me/relationships', {
+      method: 'POST', token: sender.token, body: { username: target.user.username },
+    });
+    assert.equal(r.status, 201);
+  }
+  const list = async token => (await api('/api/users/@me/relationships', { token })).body.relationships;
+  const before = await list(sender.token);
+  assert.equal(before.length, 2);
+  assert.ok(before.every(r => r.type === 'outgoing'));
+  assert.equal((await list(receiver.token))[0].type, 'incoming');
+
+  const ws = new WebSocket(`ws://localhost:${port}/ws?token=${receiver.token}`);
+  t.after(() => ws.terminate());
+  const waitEvent = type => new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      ws.off('message', message);
+      ws.off('error', fail);
+    };
+    const fail = error => { cleanup(); reject(error); };
+    const message = raw => {
+      const event = JSON.parse(raw);
+      if (event.t === type) { cleanup(); resolve(event); }
+    };
+    const timer = setTimeout(() => fail(new Error(`timeout ${type}`)), 5000);
+    t.after(cleanup);
+    ws.on('message', message);
+    ws.once('error', fail);
+  });
+  await waitEvent('READY');
+  assert.equal((await api(path, { method: 'DELETE' })).status, 401);
+  assert.equal((await api(path, { method: 'DELETE', token: outsider.token })).status, 404);
+  assert.deepEqual(await list(sender.token), before);
+  assert.equal((await list(receiver.token)).length, 1);
+
+  const changed = waitEvent('RELATIONSHIP_UPDATE');
+  const cancelled = await api(path, { method: 'DELETE', token: sender.token });
+  assert.equal(cancelled.status, 200);
+  assert.equal((await changed).t, 'RELATIONSHIP_UPDATE');
+  const remaining = await list(sender.token);
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].user.id, other.user.id);
+  assert.deepEqual(await list(receiver.token), []);
+  assert.equal((await list(other.token))[0].user.id, sender.user.id);
+  const lateAccept = await api(`/api/users/@me/relationships/${sender.user.id}/accept`, {
+    method: 'POST', token: receiver.token,
+  });
+  assert.equal(lateAccept.status, 404);
+  assert.deepEqual(await list(receiver.token), []);
 });

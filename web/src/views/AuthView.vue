@@ -49,7 +49,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { store, login, register } from '../stores.js';
-import { api, setToken } from '../api.js';
+import { auth } from '../services/index.js';
 
 const router = useRouter();
 const mode = ref('login');
@@ -71,13 +71,13 @@ async function doReset() {
   error.value = ''; loading.value = true;
   try {
     if (!resetSent.value) {
-      const r = await api('/auth/password/request', { method: 'POST', body: { email: email.value } });
+      const r = await auth.requestPasswordReset(email.value);
       resetSent.value = true;
       resetInfo.value = r.devResetToken
         ? `Modo dev — token: ${r.devResetToken}`
         : 'Se o email existir, você receberá o token.';
     } else {
-      await api('/auth/password/confirm', { method: 'POST', body: { token: resetToken.value, password: password.value } });
+      await auth.confirmPasswordReset(resetToken.value, password.value);
       mode.value = 'login'; resetInfo.value = 'Senha redefinida. Faça login.';
     }
   } catch (e) { error.value = e.message; }

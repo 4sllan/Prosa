@@ -1,17 +1,21 @@
 import { reactive } from 'vue';
-import { store, wsSend, onWs } from './stores.js';
+import { store } from './stores.js';
+import { events, misc } from './services/index.js';
 
 // WebRTC mesh: peers = Map<`${channelId}:${userId}`, {pc, stream}>
 export const rtc = reactive({
   channelId: null,
+  channelName: null,
   peers: new Map(),
   localStream: null,
   screenStream: null,
   muted: false,
   deafened: false,
+  speakerMuted: false,
   video: false,
   screen: false,
   remoteStreams: {}, // `${channelId}:${userId}` -> MediaStream
+  speaking: {},    // userId -> bool (detecção local, não propagada)
 });
 
 const myId = () => store.user?.id;
@@ -25,7 +29,7 @@ function makePc(channelId, peerId) {
   rtc.remoteStreams[key] = entry.stream;
 
   pc.onicecandidate = (e) => {
-    if (e.candidate) wsSend('SIGNAL', { channelId, to: peerId, data: { ice: e.candidate.toJSON() } });
+    if (e.candidate) events.signal(channelId, peerId, { ice: e.candidate.toJSON() });
   };
   pc.ontrack = (e) => {
     entry.stream = e.streams[0] || entry.stream;
@@ -46,13 +50,14 @@ function dropPeer(channelId, peerId) {
   rtc.peers.get(key)?.pc.close();
   rtc.peers.delete(key);
   delete rtc.remoteStreams[key];
+  analysers.delete(key);
 }
 
 async function offer(channelId, peerId) {
   const pc = makePc(channelId, peerId);
   const o = await pc.createOffer();
   await pc.setLocalDescription(o);
-  wsSend('SIGNAL', { channelId, to: peerId, data: { sdp: pc.localDescription } });
+  events.signal(channelId, peerId, { sdp: pc.localDescription });
 }
 
 async function handleSignal({ channelId, from, data }) {
@@ -63,14 +68,14 @@ async function handleSignal({ channelId, from, data }) {
       const glare = data.sdp.type === 'offer' && pc.signalingState !== 'stable';
       if (glare) {
         // deterministic tie-break: smaller user id keeps its offer
-        if (myId() > from) { await pc.setLocalDescription({ type: 'rollback' }); await pc.setRemoteDescription(data.sdp); const a = await pc.createAnswer(); await pc.setLocalDescription(a); wsSend('SIGNAL', { channelId, to: from, data: { sdp: pc.localDescription } }); }
+        if (myId() > from) { await pc.setLocalDescription({ type: 'rollback' }); await pc.setRemoteDescription(data.sdp); const a = await pc.createAnswer(); await pc.setLocalDescription(a); events.signal(channelId, from, { sdp: pc.localDescription }); }
         return;
       }
       await pc.setRemoteDescription(data.sdp);
       if (data.sdp.type === 'offer') {
         const a = await pc.createAnswer();
         await pc.setLocalDescription(a);
-        wsSend('SIGNAL', { channelId, to: from, data: { sdp: pc.localDescription } });
+        events.signal(channelId, from, { sdp: pc.localDescription });
       }
     } else if (data.ice) {
       await pc.addIceCandidate(data.ice).catch(() => {});
@@ -78,9 +83,10 @@ async function handleSignal({ channelId, from, data }) {
   } catch (e) { console.warn('rtc signal', e); }
 }
 
-onWs('SIGNAL', handleSignal);
+events.on('SIGNAL', handleSignal);
 
-onWs('VOICE_STATE', ({ channelId, members }) => {
+events.on('VOICE_STATE', ({ channelId, members }) => {
+  store.voice[channelId] = members;
   if (channelId !== rtc.channelId) return;
   const others = members.filter(m => m.userId !== myId());
   const present = new Set(others.map(m => m.userId));
@@ -96,28 +102,87 @@ onWs('VOICE_STATE', ({ channelId, members }) => {
   }
 });
 
-export async function joinVoice(channelId) {
+// ---- indicador local de fala: AnalyserNode por stream, sem propagação ----
+let audioCtx = null, speakTimer = null;
+const analysers = new Map(); // 'self' | `${channelId}:${userId}` -> {analyser, buf, lastSpoke}
+const SPEAK_RMS = 10, SPEAK_HOLD = 400;
+
+function ensureAnalyser(key, stream) {
+  if (!stream || analysers.has(key)) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx ||= new Ctx();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    analysers.set(key, { analyser, buf: new Uint8Array(analyser.fftSize), lastSpoke: 0 });
+  } catch {}
+}
+
+function pollSpeaking() {
+  if (rtc.localStream) ensureAnalyser('self', rtc.localStream);
+  for (const key of Object.keys(rtc.remoteStreams)) ensureAnalyser(key, rtc.remoteStreams[key]);
+  for (const key of [...analysers.keys()]) {
+    if (key !== 'self' && !rtc.remoteStreams[key]) analysers.delete(key);
+  }
+  const next = {};
+  for (const [key, a] of analysers) {
+    a.analyser.getByteTimeDomainData(a.buf);
+    let sum = 0;
+    for (const v of a.buf) { const d = v - 128; sum += d * d; }
+    if (Math.sqrt(sum / a.buf.length) > SPEAK_RMS) a.lastSpoke = Date.now();
+    const uid = key === 'self' ? myId() : key.split(':')[1];
+    next[uid] = Date.now() - a.lastSpoke < SPEAK_HOLD;
+  }
+  const cur = rtc.speaking;
+  const keys = Object.keys(next);
+  if (keys.length !== Object.keys(cur).length || keys.some(uid => cur[uid] !== next[uid])) rtc.speaking = next;
+}
+
+function startSpeaking() {
+  stopSpeaking();
+  speakTimer = setInterval(pollSpeaking, 120);
+}
+
+function stopSpeaking() {
+  if (speakTimer) { clearInterval(speakTimer); speakTimer = null; }
+  analysers.clear();
+  audioCtx?.close().catch(() => {});
+  audioCtx = null;
+  rtc.speaking = {};
+}
+
+export async function joinVoice(channelId, name) {
   if (rtc.channelId === channelId) return;
   await leaveVoice();
   rtc.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  rtc.channelName = name ?? null;
   rtc.channelId = channelId;
-  wsSend('VOICE_JOIN', { channelId });
+  events.joinVoice(channelId);
+  store.voice[channelId] = (await misc.voiceState(channelId)).members;
+  startSpeaking();
 }
 
 export async function leaveVoice() {
   if (!rtc.channelId) return;
-  wsSend('VOICE_LEAVE', { channelId: rtc.channelId });
+  const channelId = rtc.channelId;
+  events.leaveVoice(channelId);
+  const list = store.voice[channelId];
+  if (list) store.voice[channelId] = list.filter(v => v.userId !== myId());
   for (const key of [...rtc.peers.keys()]) { const [ch, uid] = key.split(':'); dropPeer(ch, uid); }
+  stopSpeaking();
   rtc.localStream?.getTracks().forEach(t => t.stop());
   rtc.screenStream?.getTracks().forEach(t => t.stop());
   rtc.localStream = null; rtc.screenStream = null;
-  rtc.channelId = null; rtc.video = false; rtc.screen = false; rtc.muted = false; rtc.deafened = false;
+  rtc.channelId = null; rtc.channelName = null; rtc.video = false; rtc.screen = false; rtc.muted = false; rtc.deafened = false; rtc.speakerMuted = false;
 }
 
 export function toggleMute() {
   rtc.muted = !rtc.muted;
   rtc.localStream?.getAudioTracks().forEach(t => t.enabled = !rtc.muted);
-  wsSend('VOICE_UPDATE', { channelId: rtc.channelId, state: { muted: rtc.muted } });
+  if (rtc.channelId) events.updateVoice(rtc.channelId, { muted: rtc.muted });
 }
 
 export async function toggleVideo() {
@@ -138,7 +203,7 @@ export async function toggleVideo() {
     });
     rtc.video = false;
   }
-  wsSend('VOICE_UPDATE', { channelId: rtc.channelId, state: { video: rtc.video } });
+  events.updateVoice(rtc.channelId, { video: rtc.video });
 }
 
 export async function toggleScreen() {
@@ -159,12 +224,18 @@ export async function toggleScreen() {
     rtc.screenStream = null;
     rtc.screen = false;
   }
-  wsSend('VOICE_UPDATE', { channelId: rtc.channelId, state: { screen: rtc.screen } });
+  events.updateVoice(rtc.channelId, { screen: rtc.screen });
 }
 
 export function toggleDeafen() {
   rtc.deafened = !rtc.deafened;
   if (rtc.deafened && !rtc.muted) toggleMute();
   if (!rtc.deafened && rtc.muted) toggleMute();
-  wsSend('VOICE_UPDATE', { channelId: rtc.channelId, state: { deafened: rtc.deafened } });
+  events.updateVoice(rtc.channelId, { deafened: rtc.deafened });
+}
+
+export function toggleSpeaker() {
+  rtc.speakerMuted = !rtc.speakerMuted;
+  if (!rtc.speakerMuted && rtc.deafened) toggleDeafen();
+  if (rtc.channelId) events.updateVoice(rtc.channelId, { speakerMuted: rtc.speakerMuted });
 }

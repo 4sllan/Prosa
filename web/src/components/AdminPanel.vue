@@ -1,6 +1,6 @@
 <template>
   <div class="main" style="padding:24px;overflow-y:auto">
-    <h2 style="margin-bottom:16px">🛡 Administração</h2>
+    <h2 style="margin-bottom:16px"><Shield :size="20" aria-hidden="true" style="vertical-align:-3px" /> Administração</h2>
     <div v-if="stats" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px">
       <div class="pill" v-for="(v,k) in stats" :key="k">{{ k }}: {{ v }}</div>
     </div>
@@ -28,24 +28,25 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { api } from '../stores.js';
+import { admin } from '../services/index.js';
+import { Shield } from 'lucide-vue-next';
 
 const users = ref([]); const reports = ref([]); const stats = ref(null);
 const openReports = computed(() => reports.value.filter(r => r.status === 'open'));
 
 async function load() {
   [users.value, reports.value, stats.value] = await Promise.all([
-    api('/admin/users').then(r => r.users),
-    api('/admin/reports').then(r => r.reports),
-    api('/admin/stats'),
+    admin.users().then(r => r.users),
+    admin.reports().then(r => r.reports),
+    admin.stats(),
   ]);
 }
 async function toggleSuspend(u) {
-  await api(`/admin/users/${u.id}/${u.suspended ? 'unsuspend' : 'suspend'}`, { method: 'POST' });
+  if (u.suspended) await admin.unsuspend(u.id); else await admin.suspend(u.id);
   load();
 }
 async function resolve(id, status) {
-  await api(`/admin/reports/${id}/resolve`, { method: 'POST', body: { status } });
+  await admin.resolveReport(id, status);
   load();
 }
 onMounted(load);

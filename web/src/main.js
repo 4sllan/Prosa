@@ -4,6 +4,11 @@ import App from './App.vue';
 import AuthView from './views/AuthView.vue';
 import HomeView from './views/HomeView.vue';
 import { store, bootstrap } from './stores.js';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
 import './style.css';
 
 const router = createRouter({
@@ -22,6 +27,13 @@ router.beforeEach((to) => {
   if (store.user && to.path === '/login') return '/';
 });
 
-bootstrap();
-
 createApp(App).use(router).mount('#app');
+
+// após o bootstrap, reconcilia a rota com o estado de sessão —
+// o guard só roda em navegações, então um hash antigo (ex.: #/login)
+// deixaria a tela errada visível mesmo com identidade válida.
+bootstrap().then(() => {
+  const to = router.currentRoute.value;
+  if (store.user && to.path === '/login') router.replace('/');
+  else if (!store.user && !to.meta.public) router.replace('/login');
+});

@@ -29,6 +29,27 @@ app.use((_req, res, next) => {
   next();
 });
 
+// CORS opt-in para o app desktop (Electron carrega file:// → Origin "null")
+// e outros clientes cross-origin. Configure CORS_ORIGINS=origem1,origem2 — ex.:
+// CORS_ORIGINS="null,https://prosa.app". Vazio/desligado = comportamento same-origin atual.
+const corsOrigins = new Set((process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean));
+if (corsOrigins.size) {
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && corsOrigins.has(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,PUT,DELETE,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'content-type,authorization');
+      return res.status(204).end();
+    }
+    next();
+  });
+}
+
 app.use('/api/auth', authRouter);
 app.use('/api', miscRouter); // /config é público; rotas protegidas usam requireAuth internamente
 app.use('/api/users', requireAuth, usersRouter);

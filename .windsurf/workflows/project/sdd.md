@@ -29,7 +29,7 @@ This is the **mandatory first step** for any new feature request under SDD. No c
 - Do **NOT** create implementation files.
 - Do **NOT** create tasks.
 - Do **NOT** create a Spec.
-- Do **NOT** run migrations (schema changes in `server/src/db.js`).
+- Do **NOT** run migrations (schema changes in `server/src/db.js` or `web/desktop/store.cjs`).
 - Do **NOT** install or update dependencies.
 - Do **NOT** change configurations.
 - Do **NOT** implement any part of the feature.
@@ -43,31 +43,35 @@ This is the **mandatory first step** for any new feature request under SDD. No c
    - Framework and versions.
    - Dependencies (`package.json`, `web/package.json`, `server/package.json`, `package-lock.json` files).
    - Relevant configuration files (`.env`, `.env.example`, `server/src/config.js`, `web/vite.config.js`, `web/electron-builder.yml`).
-   - Available scripts (`npm run dev` — API on :4000, `npm run dev:web` — Vite on :5173 with API proxy, `npm run build`, `npm test` — `node --test server/test/*.test.js`, `npm start`; Electron packaging scripts under `web/`).
+   - Available scripts (`npm run dev` — API on :4000, `npm run dev:web` — Vite on :5173 with API proxy, `npm run build`, `npm test` — server suite `server/test/*.test.js`, `npm --prefix web test` — P2P suite `web/test/*.test.js`, `npm start`; Electron dev/packaging scripts under `web/`).
    - Environment variables: `DATA_DIR`, `ICE_SERVERS_JSON`, `SMTP_*`, `VITE_API_URL` (build), `PROSA_API_URL` (runtime), `PROSA_DEV_URL` (Electron dev).
-   - Current state of the project (`docs/docs.md`, README, and actual code).
+   - Current state of the project (`docs/specs/`, README, and actual code; `docs/docs.md` does not currently exist).
 
 2. **Documentation**
-   - Read `docs/docs.md` (if existing) or project specs in `docs/specs/`, plus `README.md`.
+   - Read `README.md` plus the specs in `docs/specs/` (e.g. `p2p-architecture.md`, `p2p-architecture-tasks.md`). `docs/docs.md` does not currently exist; if created later it becomes the living state document.
    - Use documentation as context but treat the current source code as the primary source of truth.
    - If documentation diverges from the code, report the divergence explicitly.
 
 3. **Requested feature**
-   - What already exists related to the feature (see the feature inventory in `README.md`: accounts, presence, communities/roles, messages, DMs, voice/video, search, admin).
+   - What already exists related to the feature (see the feature inventory in `README.md`: accounts, presence, communities/roles, messages, DMs, voice/video, search, admin, plus the experimental P2P mode).
    - What is partially implemented.
-   - Existing components, views, stores, API client methods, Express routes, WS message types, DB tables/queries, and dependencies that can be reused.
-   - Architectural impact on frontend (Vue/Electron) and backend (Express routes + `realtime.js` WS hub + `db.js` schema).
+   - Existing components, views, stores, service/provider methods (`web/src/services/`), API client methods, Express routes, WS message types, DB tables/queries, and dependencies that can be reused.
+   - Architectural impact on frontend (Vue/Electron, provider abstraction) and backend (Express routes + `realtime.js` WS hub + `db.js` schema).
    - Possible conflicts, style inconsistencies, and technical risks.
 
 4. **Architecture areas to inspect**
    - `web/src/views/` — `AuthView.vue` (login/register/reset), `HomeView.vue` (app shell).
-   - `web/src/components/` — `ChatView.vue`, `VoiceBar.vue`, `FriendsPanel.vue`, `AdminPanel.vue`, `CommunitySettings.vue`, `UserSettings.vue`.
+   - `web/src/components/` — `ChatView.vue`, `VoiceBar.vue`, `FriendsPanel.vue`, `AdminPanel.vue`, `CommunitySettings.vue`, `UserSettings.vue`, `ModePicker.vue`, `PairingPanel.vue`.
    - `web/src/stores.js` — Pinia state + client WebSocket handling.
    - `web/src/api.js` — REST client, auth headers, error handling.
    - `web/src/rtc.js` — WebRTC mesh engine (peer connections, mic/camera/screen).
+   - `web/src/services/` — backend abstraction layer: `provider.js`, `index.js`, `realtime.js`, `providers/server.js` (server mode) and `providers/p2p.js` (P2P mode).
+   - `web/src/services/p2p/` — experimental P2P stack: `envelope.js` (signed events), `eventlog.js`/`converge.js` (log + LWW rules), `transport.js` (fan-out/ACKs), `sync.js`, `spaces.js`, `pairing.js`, `identity.js`, `localstore.js`, `contacts.js`, `files.js`, `node.js`, `localconfig.js`, `syncstore.js`.
    - `web/src/App.vue`, `web/src/main.js`, `web/src/style.css` — shell, bootstrap, global styles.
    - `web/src/assets/` — static assets.
    - `web/desktop/main.cjs`, `web/desktop/preload.cjs` — Electron main/preload (`contextIsolation: true`, `nodeIntegration: false`, `window.prosaDesktop` bridge).
+   - `web/desktop/identity.cjs` — Ed25519 P2P identity kept in the main process (`identity.key` in `userData/p2p/`, mode `0600`); renderer only sees pubkey/signatures via IPC (`p2p:pubkey`, `p2p:sign`, `p2p:fingerprint`).
+   - `web/desktop/store.cjs` — local P2P persistence (`node:sqlite` → `sql.js` → journal JSON) exposed via typed `p2p:store` IPC (named ops, never arbitrary SQL).
    - `server/src/index.js` — Express + HTTP + WS wiring, security headers, rate limits.
    - `server/src/config.js` — env loading (`DATA_DIR`, `ICE_SERVERS_JSON`, `SMTP_*`).
    - `server/src/db.js` — `node:sqlite` schema + idempotent migrations (`migrations` table convention).
@@ -75,19 +79,23 @@ This is the **mandatory first step** for any new feature request under SDD. No c
    - `server/src/permissions.js` — roles (owner/admin/moderator/member), server-verified permission checks.
    - `server/src/realtime.js` — WS hub (`/ws`), presence, typing, voice state, WebRTC `SIGNAL` relay.
    - `server/src/routes/` — `users.js`, `communities.js`, `messages.js`, `dms.js`, `misc.js`, `admin.js`.
+   - `server/src/util.js` — shared server helpers.
    - `server/test/api.test.js` — Node test suite covering auth, permissions, messages, invites, DMs, WS, search.
+   - `web/test/p2p.test.js` — P2P suite (envelope, dedupe/fan-out/ack, eventlog/LWW, spaces, sync); run with `npm --prefix web test`.
    - `data/` — `prosa.db` (SQLite, WAL) + `uploads/` (multer uploads, authenticated, 25 MB limit).
    - `release/` — packaged desktop artifacts (`.dmg`, `.exe`, `.deb`).
 
    Also evaluate:
-   - Data flow (views ↔ Pinia stores ↔ `api.js`/`rtc.js` ↔ Express routes ↔ `realtime.js` ↔ `db.js` ↔ SQLite).
+   - Data flow (views ↔ Pinia stores ↔ `services/provider` ↔ `api.js`/`rtc.js` or P2P modules ↔ Express routes ↔ `realtime.js` ↔ `db.js` ↔ SQLite).
    - API integration (Express endpoints, auth cookie/token, `multer` uploads, rate limits on auth and message sends).
    - Realtime behavior (WS event names/payloads in `realtime.js` and `stores.js`; presence, typing, `SIGNAL` signaling).
    - Voice/video constraints (WebRTC mesh, practical limit ~6–8 participants; SFU evaluation if a feature needs more).
    - Auth session lifecycle, revocable sessions, and permission checks enforced server-side.
+   - Mode selection (`localStorage.prosa_mode` = `server`|`p2p`) — decide whether the feature applies to server mode, P2P mode, or both, and keep behavior consistent across providers.
+   - P2P constraints — signed envelopes (`spaceId:author:seq`), Ed25519 signatures over canonical JSON, LWW/permission rules in `p2p/converge.js`, manual pairing only, no relay/mailbox for offline peers.
    - Form handling and validation rules (client-side plus mandatory server-side validation).
    - UI styling and design consistency (`web/src/style.css` and scoped component styles; no UI framework).
-   - Electron desktop constraints (main/renderer boundary, `window.prosaDesktop` IPC, `electron-builder` packaging).
+   - Electron desktop constraints (main/renderer boundary, `window.prosaDesktop` IPC incl. `p2p:*` channels, `electron-builder` packaging).
    - Security constraints (bcrypt, session revocation, rate limiting, upload type/size validation, security headers, `.env` secrets).
 
 ### Analysis output format
@@ -145,9 +153,9 @@ Only after the analysis from Phase 1 is complete and the user has given explicit
    - UI/UX requirements (Vue 3 components, `style.css` conventions, responsiveness, Electron desktop behavior).
    - API contracts and endpoints (Express routes, request/response schemas, `multer` uploads, error shapes).
    - Realtime contracts (WS event names, payload shapes, presence/typing/voice effects, reconnection behavior).
-   - State management / Pinia model changes in `stores.js`.
-   - Data persistence impact (`db.js` schema changes, migrations convention, `data/` files/uploads).
-   - Permission/role impact (`permissions.js`, server-side checks per route).
+   - State management / Pinia model changes in `stores.js` and service/provider surface (`services/provider.js`, `providers/server.js`, `providers/p2p.js`).
+   - Data persistence impact (`db.js` schema changes, migrations convention, `data/` files/uploads; P2P local store tables in `web/desktop/store.cjs`).
+   - Permission/role impact (`permissions.js`, server-side checks per route; P2P authority rules in `p2p/converge.js`).
    - Form validation rules (client and server).
    - Security & authorization considerations (`auth.js` sessions, rate limits, upload validation, secrets in `.env`).
    - Acceptance criteria.
@@ -242,7 +250,7 @@ Waiting for explicit authorization to proceed to the next task.
 
 ## Documentation vs. process
 
-- **`docs/docs.md`**: living product and project state document. Must contain product vision, features, business rules, architecture, behaviors, data models, relevant decisions, and current state. Do **NOT** add temporary SDD flow instructions (e.g., "aguardando autorização", "próximo passo", "análise da funcionalidade") to this file.
+- **`docs/docs.md`**: living product and project state document — does not currently exist; `README.md` + `docs/specs/` are the current sources. If created, it must contain product vision, features, business rules, architecture, behaviors, data models, relevant decisions, and current state. Do **NOT** add temporary SDD flow instructions (e.g., "aguardando autorização", "próximo passo", "análise da funcionalidade") to this file.
 - **`.windsurf/`**: responsible for the SDD process (analysis, spec creation, task creation, execution, validation, approval).
 
 ---

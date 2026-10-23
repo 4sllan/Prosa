@@ -2,24 +2,25 @@
   <div class="chat">
     <div ref="listEl" class="msgs" @scroll="onScroll">
       <div v-if="loadingMore" style="text-align:center;color:var(--fg-dim);font-size:12px;padding:8px">Carregando…</div>
-      <div v-for="(m, i) in messages" :key="m.id" class="msg" :class="{ compact: isCompact(i) }">
+      <div v-for="(m, i) in messages" :key="m.id" class="msg" :class="{ compact: isCompact(i) }"
+           @contextmenu.prevent="msgMenu(m, $event)">
         <span class="avatar" v-if="!isCompact(i)">
           <img v-if="m.author.avatarUrl" :src="fullUrl(m.author.avatarUrl)">
           <template v-else>{{ m.author.displayName.slice(0, 2).toUpperCase() }}</template>
         </span>
         <span v-else class="avatar" style="visibility:hidden"></span>
         <div style="flex:1;min-width:0">
-          <div v-if="m.replyTo" class="reply-ref">↩ {{ m.replyTo.author }}: {{ m.replyTo.content }}</div>
+          <div v-if="m.replyTo" class="reply-ref"><Reply :size="12" aria-hidden="true" /> {{ m.replyTo.author }}: {{ m.replyTo.content }}</div>
           <div v-if="!isCompact(i)" class="msg-head">
             <span class="author">{{ m.author.displayName }}</span>{{ fmtTime(m.createdAt) }}
             <span v-if="m.editedAt" style="font-size:11px">(editada)</span>
-            <span v-if="m.pinned" class="pin-tag">📌 fixada</span>
+            <span v-if="m.pinned" class="pin-tag"><Pin :size="11" aria-hidden="true" /> fixada</span>
           </div>
           <div class="msg-body" v-if="editing !== m.id">{{ m.content }}
             <template v-for="a in m.attachments" :key="a.id">
               <img v-if="a.mime?.startsWith('image/')" :src="fullUrl(a.url)" class="att" :alt="a.filename">
               <video v-else-if="a.mime?.startsWith('video/')" :src="fullUrl(a.url)" class="att" controls></video>
-              <a v-else :href="fullUrl(a.url)" class="att" target="_blank">📎 {{ a.filename }} ({{ fmtSize(a.size) }})</a>
+              <a v-else :href="fullUrl(a.url)" class="att" target="_blank"><Paperclip :size="14" aria-hidden="true" /> {{ a.filename }} ({{ fmtSize(a.size) }})</a>
             </template>
           </div>
           <div v-else style="display:flex;gap:6px;margin-top:4px">
@@ -35,10 +36,8 @@
           <button @click="react(m, '👍')" title="Reagir">👍</button>
           <button @click="react(m, '❤️')" title="Reagir">❤️</button>
           <button @click="customReact(m)" title="Emoji">😀</button>
-          <button @click="replyTo = m; focusComposer()" title="Responder">↩</button>
-          <button v-if="m.author.id === store.user.id" @click="editing = m.id; editText = m.content" title="Editar">✎</button>
-          <button @click="pin(m)" title="Fixar">📌</button>
-          <button v-if="m.author.id === store.user.id || canModerate" @click="del(m)" title="Excluir">🗑</button>
+          <button @click="copyMessage(m)" title="Copiar texto"><Copy :size="14" aria-hidden="true" /></button>
+          <button @click="replyTo = m; focusComposer()" title="Responder"><Reply :size="14" aria-hidden="true" /></button>
         </div>
       </div>
     </div>
@@ -46,18 +45,42 @@
     <div class="typing">{{ typingText }}</div>
     <div v-if="replyTo" class="replying">
       Respondendo a <b>&nbsp;{{ replyTo.author.displayName }}</b>: {{ replyTo.content.slice(0, 60) }}
-      <button @click="replyTo = null">✕</button>
+      <button @click="replyTo = null"><X :size="14" aria-hidden="true" /></button>
     </div>
     <div class="composer">
       <div class="composer-box">
-        <button @click="fileInput.click()" title="Anexar">📎</button>
+        <button @click="fileInput.click()" title="Anexar"><Paperclip :size="16" aria-hidden="true" /></button>
         <input ref="fileInput" type="file" multiple hidden @change="files = [...$event.target.files]">
         <textarea ref="composer" v-model="draft" rows="1" :placeholder="'Conversar em ' + channelLabel"
                   @keydown.enter.exact.prevent="send" @input="notifyTyping"></textarea>
-        <button @click="send" class="btn primary" style="padding:8px 16px">➤</button>
+        <button @click="send" class="btn primary" style="padding:8px 16px"><SendHorizontal :size="16" aria-hidden="true" /></button>
       </div>
       <div v-if="files.length" style="font-size:12px;color:var(--fg-dim);padding-top:6px">
         {{ files.length }} arquivo(s) anexado(s) <button @click="files = []">remover</button>
+      </div>
+    </div>
+
+    <ContextMenu v-if="menu.open" :x="menu.x" :y="menu.y" :items="menuItems"
+                 @select="onMenuSelect" @close="menu.open = false" />
+
+    <div v-if="forwardMsg" class="modal-bg" @click.self="forwardMsg = null">
+      <div class="modal">
+        <h2>Encaminhar mensagem</h2>
+        <div class="row">
+          <label>Mensagem</label>
+          <div style="font-size:13px;color:var(--fg-dim)">{{ forwardMsg.content?.slice(0, 140) || `${forwardMsg.attachments?.length} anexo(s)` }}</div>
+        </div>
+        <div class="row">
+          <label>Destino</label>
+          <select v-model="forwardTarget">
+            <option value="" disabled>Escolha uma conversa</option>
+            <option v-for="t in forwardTargets" :key="t.id" :value="t.id">{{ t.label }}</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" @click="forwardMsg = null">Cancelar</button>
+          <button class="btn primary" :disabled="!forwardTarget" @click="confirmForward">Encaminhar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -65,7 +88,12 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
-import { store, api, sendMessage, wsSend, fullUrl } from '../stores.js';
+import { store, sendMessage, fullUrl } from '../stores.js';
+import { messages as messagesService } from '../services/index.js';
+import { messageTime } from '../services/datetime.js';
+import { copyText } from '../services/copy-text.js';
+import ContextMenu from './ContextMenu.vue';
+import { Reply, Forward, Pin, PinOff, Paperclip, Copy, Pencil, Trash2, X, SendHorizontal } from 'lucide-vue-next';
 
 const props = defineProps({ channel: Object });
 const draft = ref(''); const files = ref([]); const replyTo = ref(null);
@@ -91,9 +119,10 @@ function nameOf(uid) {
 function isCompact(i) {
   if (i === 0) return false;
   const a = messages.value[i - 1], b = messages.value[i];
-  return a.author.id === b.author.id && b.createdAt - a.createdAt < 300_000 && !b.replyTo;
+  const dt = b.createdAt - a.createdAt;
+  return a.author.id === b.author.id && Number.isFinite(dt) && dt < 300_000 && !b.replyTo;
 }
-function fmtTime(ts) { return new Date(ts).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }); }
+function fmtTime(ts) { return messageTime(ts); }
 function fmtSize(n) { return n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' KB'; }
 function focusComposer() { nextTick(() => composer.value?.focus()); }
 
@@ -113,28 +142,83 @@ async function send() {
 
 let typingAt = 0;
 function notifyTyping() {
-  if (Date.now() - typingAt > 3000) { typingAt = Date.now(); wsSend('TYPING', { channelId: props.channel.id }); }
+  if (Date.now() - typingAt > 3000) { typingAt = Date.now(); messagesService.typing(props.channel.id); }
 }
 
 async function saveEdit(m) {
-  await api(`/channels/${props.channel.id}/messages/${m.id}`, { method: 'PATCH', body: { content: editText.value } });
+  await messagesService.edit(props.channel.id, m.id, { content: editText.value });
   editing.value = null;
 }
 async function del(m) {
   if (!confirm('Excluir esta mensagem?')) return;
-  await api(`/channels/${props.channel.id}/messages/${m.id}`, { method: 'DELETE' });
+  await messagesService.delete(props.channel.id, m.id);
 }
 async function pin(m) {
-  await api(`/channels/${props.channel.id}/messages/${m.id}/pin`, { method: m.pinned ? 'DELETE' : 'POST' });
+  if (m.pinned) await messagesService.unpin(props.channel.id, m.id);
+  else await messagesService.pin(props.channel.id, m.id);
 }
 function react(m, emoji) { toggleReaction(m, emoji); }
+function copyMessage(m) { copyText(m.content); }
+
+const menu = ref({ open: false, x: 0, y: 0, msg: null });
+const forwardMsg = ref(null); const forwardTarget = ref('');
+
+const forwardTargets = computed(() => [
+  ...store.dms.map(d => ({ id: d.id, label: d.type === 'group_dm' ? `👥 ${d.name}` : (d.recipients[0]?.displayName || d.name || 'DM') })),
+  ...store.channels.map(c => ({ id: c.id, label: `# ${c.name}` })),
+]);
+
+const menuItems = computed(() => {
+  const m = menu.value.msg;
+  if (!m) return [];
+  const items = [
+    { label: 'Responder', value: 'reply', icon: Reply },
+    { label: 'Encaminhar', value: 'forward', icon: Forward },
+    { label: 'Copiar texto', value: 'copy', icon: Copy },
+  ];
+  if (m.author.id === store.user.id) items.push({ label: 'Editar', value: 'edit', icon: Pencil });
+  if (canModerate.value || String(props.channel.type).includes('dm')) {
+    items.push({ label: m.pinned ? 'Desafixar' : 'Fixar', value: 'pin', icon: m.pinned ? PinOff : Pin });
+  }
+  if (m.author.id === store.user.id || canModerate.value) {
+    items.push({ divider: true }, { label: 'Excluir mensagem', value: 'delete', danger: true, icon: Trash2 });
+  }
+  return items;
+});
+
+function msgMenu(m, e) {
+  if (e.target.closest('input, textarea, select, a')) return;
+  menu.value = { open: true, x: e.clientX, y: e.clientY, msg: m };
+}
+
+function onMenuSelect(item) {
+  const m = menu.value.msg;
+  if (!m) return;
+  if (item.value === 'reply') { replyTo.value = m; focusComposer(); }
+  else if (item.value === 'forward') { forwardMsg.value = m; forwardTarget.value = ''; }
+  else if (item.value === 'copy') copyMessage(m);
+  else if (item.value === 'edit') { editing.value = m.id; editText.value = m.content; }
+  else if (item.value === 'pin') pin(m);
+  else if (item.value === 'delete') del(m);
+}
+
+async function confirmForward() {
+  const m = forwardMsg.value;
+  if (!m || !forwardTarget.value) return;
+  const attachments = (m.attachments || []).map(a => ({ url: a.url, filename: a.filename, mime: a.mime, size: a.size }));
+  try {
+    await sendMessage(forwardTarget.value, m.content, { attachments });
+    forwardMsg.value = null;
+  } catch (e) { alert(e.message); }
+}
 function customReact(m) {
   const e = prompt('Emoji:');
   if (e) toggleReaction(m, e.trim());
 }
 async function toggleReaction(m, emoji) {
   const mine = m.reactions.find(r => r.emoji === emoji && r.users.includes(store.user.id));
-  await api(`/channels/${props.channel.id}/messages/${m.id}/reactions/${encodeURIComponent(emoji)}`, { method: mine ? 'DELETE' : 'PUT' });
+  if (mine) await messagesService.unreact(props.channel.id, m.id, emoji);
+  else await messagesService.react(props.channel.id, m.id, emoji);
 }
 
 async function onScroll() {
@@ -142,14 +226,14 @@ async function onScroll() {
     loadingMore.value = true;
     const oldest = messages.value[0];
     try {
-      const r = await api(`/channels/${props.channel.id}/messages?before=${oldest.id}&limit=50`);
+      const r = await messagesService.list(props.channel.id, { before: oldest.id, limit: 50 });
       store.messages[props.channel.id] = [...r.messages, ...messages.value];
     } catch {}
     loadingMore.value = false;
   }
 }
 
-watch(() => props.channel.id, () => { replyTo.value = null; editing.value = null; scrollBottom(); });
+watch(() => props.channel.id, () => { replyTo.value = null; editing.value = null; menu.value.open = false; forwardMsg.value = null; scrollBottom(); });
 watch(() => messages.value.length, () => scrollBottom());
 onMounted(scrollBottom);
 </script>

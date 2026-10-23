@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
   base: './', // caminhos relativos — necessário para carregar dist/ via file:// no Electron
+  envDir: '..', // VITE_* lidas do .env da raiz (compartilhado com o backend)
   plugins: [vue()],
   server: {
     port: 5173,

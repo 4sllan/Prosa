@@ -119,7 +119,11 @@ usersRouter.post('/@me/relationships/:otherId/block', wrap(async (req, res) => {
 
 usersRouter.delete('/@me/relationships/:otherId/block', wrap(async (req, res) => {
   const f = friendshipBetween(req.user.id, req.params.otherId);
-  if (f?.status === 'blocked' && f.user_id === req.user.id) db.prepare('DELETE FROM friendships WHERE id = ?').run(f.id);
+  if (f?.status === 'blocked' && f.user_id === req.user.id) {
+    // desbloquear restaura a amizade (RF-10) e avisa o outro lado
+    db.prepare("UPDATE friendships SET status = 'accepted' WHERE id = ?").run(f.id);
+    sendTo(req.params.otherId, 'RELATIONSHIP_UPDATE', {});
+  }
   res.json({ ok: true });
 }));
 

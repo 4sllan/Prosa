@@ -46,7 +46,8 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { store, api, logout } from '../stores.js';
+import { store, logout } from '../stores.js';
+import { users } from '../services/index.js';
 
 const emit = defineEmits(['close']);
 const router = useRouter();
@@ -61,15 +62,15 @@ const theme = ref(store.theme);
 const notifState = ref(('Notification' in window) ? Notification.permission : 'indisponível');
 
 async function saveProfile() {
-  await api('/users/@me', { method: 'PATCH', body: { displayName: displayName.value, bio: bio.value, statusText: statusText.value, avatarUrl: avatarUrl.value || null } });
-  await api('/users/@me/presence', { method: 'PATCH', body: { presence: presence.value } });
+  await users.updateProfile({ displayName: displayName.value, bio: bio.value, statusText: statusText.value, avatarUrl: avatarUrl.value || null });
+  await users.setPresence(presence.value);
   localStorage.setItem('prosa_presence', presence.value);
   emit('close');
 }
 async function changePw() {
   pwMsg.value = ''; pwOk.value = false;
   try {
-    await api('/users/@me/password', { method: 'PATCH', body: { current: curPw.value, next: newPw.value } });
+    await users.changePassword(curPw.value, newPw.value);
     pwOk.value = true; pwMsg.value = 'Senha alterada.';
     curPw.value = newPw.value = '';
   } catch (e) { pwMsg.value = e.message; }
