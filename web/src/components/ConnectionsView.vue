@@ -174,7 +174,6 @@ import { decodePairPayload } from '../services/p2p/pairing.js';
 import { createPairingFlow, isPairingBusy } from '../services/p2p/pairing-flow.js';
 import { writeClipboardText } from '../services/p2p/clipboard.js';
 import * as p2pContacts from '../services/p2p/contacts.js';
-import { messageTime } from '../services/datetime.js';
 import { version } from '../../package.json';
 import { Users, RadioTower, Search, BadgeCheck } from 'lucide-vue-next';
 
@@ -254,14 +253,9 @@ const sectionLabel = computed(() =>
     : `${TABS.find(t => t.id === tab.value).label} — ${visible.value.length}`);
 
 const ini = n => String(n || '?').slice(0, 2).toUpperCase();
-const lastSeenLabel = (uid) => {
-  const seen = knownPeers.value.find(p => p.pubkey === uid)?.lastSeen;
-  return seen ? `Visto em ${messageTime(seen)}` : 'Desconectado';
-};
-// offline/invisible e qualquer estado fora do mapa caem no "visto por último"
 const presenceLabel = uid => ({
-  online: 'Disponível', idle: 'Ausente', dnd: 'Ocupado',
-}[presenceOf(uid)] || lastSeenLabel(uid));
+  online: 'Disponível', idle: 'Ausente', dnd: 'Ocupado', offline: 'Desconectado',
+}[presenceOf(uid)] || 'Desconectado');
 
 const myKey = computed(() => getP2PNode().identity.pubKeyHex);
 const myFp = computed(() => getP2PNode().identity.fingerprint || '');

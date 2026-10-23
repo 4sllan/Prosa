@@ -25,15 +25,13 @@ let emit = () => {};
 let log = () => {};
 let keepaliveMs = KEEPALIVE_MS;
 let keepaliveMiss = KEEPALIVE_MISS;
-let afterBroadcast = null;       // hook pos-broadcast (relay via hub)
 
-export function configureTransport({ myId, emitEvent, logger, keepaliveMs: kMs, keepaliveMiss: kMiss, afterBroadcast: ab } = {}) {
+export function configureTransport({ myId, emitEvent, logger, keepaliveMs: kMs, keepaliveMiss: kMiss } = {}) {
   if (myId) me = { id: myId };
   if (emitEvent) emit = emitEvent;
   if (logger) log = logger;
   if (kMs) keepaliveMs = kMs;
   if (kMiss) keepaliveMiss = kMiss;
-  if (ab !== undefined) afterBroadcast = ab;
 }
 
 function markSeen(id) {
@@ -52,7 +50,6 @@ export function resetTransportState() {
   peers.clear(); spacePeers.clear(); pendingQueue.clear(); presences.clear();
   lastSeen.clear(); keepTimers.clear();
   keepaliveMs = KEEPALIVE_MS; keepaliveMiss = KEEPALIVE_MISS;
-  afterBroadcast = null;
 }
 
 export const p2pTransport = {
@@ -154,7 +151,6 @@ export const p2pTransport = {
       if (peerId === skip || peerId === me?.id) continue;
       if (this.send(peerId, env)) n++;
     }
-    try { afterBroadcast?.(spaceId, env, n); } catch {}
     return n;
   },
 
@@ -179,14 +175,13 @@ export const p2pTransport = {
     return true;
   },
 
-  // espera acks de um conjunto de peers por até ms; `expect` reduz o alvo
-  // (ex.: 1 = resolve no primeiro ACK, sem esperar o grupo inteiro)
-  waitAcks(eventId, peerIds, ms = 5000, expect = peerIds.length) {
+  // espera acks de um conjunto de peers por até ms
+  waitAcks(eventId, peerIds, ms = 5000) {
     return new Promise((resolve) => {
       const got = pendingAcks.get(eventId);
-      if (expect <= 0 || (got && peerIds.every(p => got.has(p)))) return resolve([...got || []]);
+      if (got && peerIds.every(p => got.has(p))) return resolve([...got]);
       const w = {
-        expect, received: new Set(got || []), resolve,
+        expect: peerIds.length, received: new Set(got || []), resolve,
         timer: setTimeout(() => { ackWaiters.delete(eventId); resolve([...w.received]); }, ms),
       };
       if (w.received.size >= w.expect) { clearTimeout(w.timer); return resolve([...w.received]); }
@@ -238,7 +233,7 @@ function dispatch(peerId, env) {
     return;
   }
   if (env.type === 'pong') { logDiag('pong.recv', diagFingerprint(peerId)); return; }
-  const payload = { ...env.body, peerId, eventId: env.id, envelope: env, source: 'dc' };
+  const payload = { ...env.body, peerId, eventId: env.id, envelope: env };
   emit(env.type, payload);
   for (const fn of handlers[env.type] || []) fn(payload);
 }

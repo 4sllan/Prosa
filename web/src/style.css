@@ -126,8 +126,6 @@ svg.lucide { vertical-align: -0.15em; flex-shrink: 0; }
 .msg .tools button { font-size: 14px; padding: 3px 7px; border-radius: 6px; color: var(--fg-dim); }
 .msg .tools button:hover { background: var(--accent); color: #fff; }
 .pin-tag { font-size: 11px; color: var(--amarelo-ipe); }
-.send-state { font-size: 11px; color: var(--fg-dim); margin-left: 6px; }
-.send-state.warn { color: var(--amarelo-ipe); }
 
 .composer { padding: 12px 16px; }
 .composer-box { background: var(--bg-input); border-radius: 12px; display: flex; align-items: flex-end; gap: 8px; padding: 8px; }

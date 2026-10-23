@@ -165,15 +165,12 @@ Arquitetura e plano completos: `docs/specs/p2p-architecture.md` e `docs/specs/p2
 
 ### Hub Supabase (rendezvous + histórico)
 
-O Supabase hospedado é uma **camada auxiliar** do P2P — o caminho preferencial continua sendo o `RTCDataChannel`. Ele fornece:
+O Supabase hospedado é uma **camada auxiliar** do P2P — não transporta mensagens entre usuários (isso continua no `RTCDataChannel`). Ele fornece:
 
-- **Presença** — cada nó publica `track` em `prosa:presence:<pubkey>` com `{displayName, status, ts}` (online/idle/dnd/offline; `invisible` publica como offline) e assina o canal dos contatos (`supabase/presence.js`). A UI reconcilia as fontes com precedência **DC > hub > offline** (`presence-sources.js`), usa o estado do hub já no boot (`users.presences` mescla `stateOf`) e exibe "visto por último" para contatos offline.
+- **Presença** — cada nó publica `track` em `prosa:presence:<pubkey>` e assina o canal dos contatos (`supabase/presence.js`).
 - **Sinalização WebRTC** — `prosa:user:<pubkey>` carrega `signal` (SDP + ICE trickle) e `notify` (convites/relacionamento). Pareamento automático: contato online + sem DataChannel → o lado de **menor pubkey** oferece (`p2p/pairing-hub.js`, perfect negotiation para renegociação/`restartIce`). O link manual `prosa://pair/` segue intacto como fallback.
-- **Relay de espaço** — `prosa:space:<spaceId>` carrega envelopes assinados de domínio **somente quando há membro alcançável pelo hub sem DataChannel** (`supabase/space-channel.js`, hook `afterBroadcast` do transporte). O receptor valida assinatura/seq como no DC, bufferiza fora de ordem por `(espaço, autor)` e puxa lacunas do mailbox (`p2p/relay.js`). `typing` vai pelo evento `ctl` nas mesmas condições.
-- **Mailbox e convergência** — `space_events` guarda **todos os envelopes aplicados** (completos, com assinatura) e `conversations.genesis` o genesis assinado do espaço. No boot, o nó lista `conversation_members`, reconstrói espaços desconhecidos pelo genesis (mesmo `acceptSpaceInvite` do convite) e puxa os eventos que faltam por autor/seq (`supabase/inbox.js`) — mensagens de quem estava offline chegam sem DC.
 - **Espelho no Postgres** — profiles, relationships, invites, conversations, conversation_members e messages espelham os eventos P2P já aplicados (idempotente por `event_id`; remetente **e** receptores gravam). `messages.list` mescla o histórico do Postgres com o log local.
 - **Inbox de convites** — no boot, convites `pending` endereçados à minha pubkey são recuperados do Postgres (quem me convidou offline vira "Recebidas").
-- **Estado de envio** — mensagem própria mostra "enviando…" até ≥1 ACK de membro online ou confirmação do publish do relay; após ~5 s vira "sem confirmação" (discreto — o envelope já está no mailbox).
 
 **Sem hub, nada quebra** — sem `VITE_SUPABASE_URL`/key o nó roda 100% P2P manual, e qualquer falha do hub é absorvida em best-effort.
 
@@ -187,16 +184,10 @@ O Supabase hospedado é uma **camada auxiliar** do P2P — o caminho preferencia
 #    SUPABASE_DB_URL=postgresql://postgres:<senha>@db.<ref>.supabase.co:5432/postgres
 # 3. aplique o schema:
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_initial_schema.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0002_space_mailbox.sql
 ```
 
-**Teste entre dois clientes** (roteiro manual):
-1. Abra duas instâncias do app (ou Vite + Electron) com a mesma config → contatos se veem online via presença e pareiam sem link.
-2. Troquem mensagens: chegam pelo DataChannel com "enviando…" sumindo ao confirmar; o histórico aparece em `GET /rest/v1/messages?conversation_id=eq.<spaceId>`.
-3. **Presença:** mude o status (ausente/ocupado) num cliente → o outro reflete sem DC aberto; feche a aba de um → o outro mostra offline e "visto por último".
-4. **Relay:** desative temporariamente o DataChannel (ex.: force `RTCDataChannel` indisponível ou bloqueie a porta do ICE) mantendo o Realtime → a mensagem chega pelo canal do espaço.
-5. **Offline → restart:** envie mensagens com o outro cliente fechado, depois reabra → espaços e mensagens convergem pelo mailbox (`space_events`), incluindo DM criada enquanto offline.
+**Teste entre dois clientes:** abra duas instâncias do app (ou Vite + Electron) com a mesma config → contatos se veem online via presença, pareiam sem link, trocam mensagens pelo DataChannel e o histórico aparece em `GET /rest/v1/messages?conversation_id=eq.<spaceId>`.
 
-**Segurança — importante:** RLS está **permissivo para `anon`** (dev-only, ver `supabase/migrations/`); qualquer portador da publishable key lê/escreve tudo, e mensagens + envelopes completos (relay/mailbox) ficam em claro no Postgres. Use um projeto **exclusivamente de dev/descartável, só com dados de teste**. `SUPABASE_DB_URL`/`SUPABASE_SECRET_KEY` são privilegiadas — nunca em `VITE_*` nem no app. Detalhes e decisões: `docs/specs/supabase-local-backend.md` e `docs/specs/supabase-friends-realtime.md`.
+**Segurança — importante:** RLS está **permissivo para `anon`** (dev-only, ver `supabase/migrations/0001_initial_schema.sql`); qualquer portador da publishable key lê/escreve tudo, e mensagens espelhadas ficam em claro no Postgres. Use um projeto **exclusivamente de dev/descartável, só com dados de teste**. `SUPABASE_DB_URL`/`SUPABASE_SECRET_KEY` são privilegiadas — nunca em `VITE_*` nem no app. Detalhes e decisões: `docs/specs/supabase-local-backend.md`.
 
-Limitações do experimental: anexos continuam **DC-only** (o relay carrega envelopes de domínio, não blobs de arquivo); o mailbox `space_events` cresce sem TTL; convites de comunidade via link compartilhado manualmente; fila de controle offline não persistente após reinício; espaços criados antes da migração 0002 não têm `genesis` no mailbox (convergem pela sync por DC); sem TURN embutido (configure o seu via `prosa_ice`/`VITE_ICE_SERVERS_JSON`).
+Limitações do experimental: sem relay/mailbox de **mensagens** para peers offline (convites são recuperados do Postgres no boot; mensagens exigem ambos online), convites de comunidade via link compartilhado manualmente, fila de controle offline não persistente após reinício e sem TURN embutido (configure o seu via `prosa_ice`/`VITE_ICE_SERVERS_JSON`).

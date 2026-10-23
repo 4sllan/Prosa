@@ -67,12 +67,6 @@ function voiceLeaveSelf(chId) {
 }
 const voiceMembers = (chId) => [...(voice.get(chId) || new Map()).values()];
 
-// presença: broadcast pelo DC + track no hub (invisible nao pode se revelar)
-const applyPresence = (p) => {
-  p2pTransport.setPresence(p);
-  node().hub?.presence?.publish({ status: p === 'invisible' ? 'offline' : p });
-};
-
 export function createP2PProvider() {
   return {
     mode: 'p2p',
@@ -98,21 +92,11 @@ export function createP2PProvider() {
         contacts.broadcastProfile(me()).catch(() => {});
         return r;
       },
-      setPresence: async (p) => applyPresence(p),
+      setPresence: async (p) => p2pTransport.setPresence(p),
       changePassword: notImpl('users.changePassword'),
-      presences: async () => {
-        // boot: DC cobre peers conectados; hub cobre contatos online no Realtime
-        // ainda nao pareados (stateOf alimentado pelos canais de presenca)
-        const dc = Object.fromEntries(
-          p2pTransport.peerIds().map(id => [id, p2pTransport.presenceOf(id)?.presence || 'online']));
-        const hub = {};
-        for (const c of await contacts.listContacts()) {
-          if (dc[c.pubkey] || c.state === 'blocked') continue;
-          const st = node().hub?.presence?.stateOf(c.pubkey);
-          if (st && st !== 'offline') hub[c.pubkey] = st;
-        }
-        return { presences: { ...hub, ...dc } };
-      },
+      presences: async () => ({
+        presences: Object.fromEntries(p2pTransport.peerIds().map(id => [id, p2pTransport.presenceOf(id)?.presence || 'online'])),
+      }),
     },
 
     contacts: {
@@ -302,13 +286,8 @@ export function createP2PProvider() {
             replyTo: body.replyTo || null, attachments: body.attachments || [],
           },
         }, node().store);
-        // expectAck: membros online-no-DC respondem ack -> confirmação de
-        // entrega (relay no hub também conta, via trackDelivery)
-        p2pTransport.broadcast(spaceId, { ...env, body: { ...env.body, expectAck: true } });
-        return {
-          message: toUiMessage(spaceId, { ...env.body.message, author: me().pubKeyHex, ts: env.ts }),
-          delivery: node().trackDelivery?.(env.id, spaceId),
-        };
+        p2pTransport.broadcast(spaceId, env);
+        return { message: toUiMessage(spaceId, { ...env.body.message, author: me().pubKeyHex, ts: env.ts }) };
       },
       edit: async (chId, mid, body) => {
         const spaceId = findSpaceByChannel(chId);
@@ -345,14 +324,7 @@ export function createP2PProvider() {
         const spaceId = findSpaceByChannel(chId);
         return { messages: messagesOf(spaceId).filter(m => m.pinned).map(m => toUiMessage(spaceId, m)) };
       },
-      typing: (chId) => {
-        p2pTransport.typing(chId);
-        // hub: membros online-no-hub sem DC recebem pelo canal de espaco
-        const spaceId = findSpaceByChannel(chId);
-        if (node().spaceNeedsRelay?.(spaceId)) {
-          node().hub?.spaces?.publishCtl(spaceId, { type: 'typing', channelId: chId });
-        }
-      },
+      typing: (chId) => p2pTransport.typing(chId),
     },
 
     files: {
@@ -411,7 +383,7 @@ export function createP2PProvider() {
           fn({ ...d, from: d.from || d.peerId });
         });
       },
-      setPresence: (p) => applyPresence(p),
+      setPresence: (p) => p2pTransport.setPresence(p),
       joinVoice: (ch) => { voiceJoinSelf(ch); p2pTransport.joinVoice(ch); },
       leaveVoice: (ch) => { voiceLeaveSelf(ch); p2pTransport.leaveVoice(ch); },
       updateVoice: (ch, s) => p2pTransport.updateVoice(ch, s),

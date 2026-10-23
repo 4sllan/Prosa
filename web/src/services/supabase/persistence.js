@@ -84,28 +84,8 @@ export function createPersistence({ client } = {}) {
     }, { onConflict: 'id' }).then(report('messages'));
   };
 
-  // Mailbox: envelope completo (assinatura verificavel) para convergencia
-  // offline — o receptor puxa por (space_id, author, seq) e reaplica no log.
-  const upsertSpaceEvent = (env) =>
-    client.from('space_events').upsert({
-      event_id: env.id,
-      space_id: env.spaceId,
-      author: env.author,
-      seq: env.seq,
-      type: env.type,
-      ts: env.ts,
-      envelope: env,
-    }, { onConflict: 'event_id' }).then(report('space_events'));
-
-  // Genesis assinado na linha da conversa — bootstrap de espaco desconhecido.
-  // Update (nao upsert): a conversa ja foi criada pelo ramo space.genesis.
-  const upsertGenesis = (env) =>
-    client.from('conversations').update({ genesis: env }).eq('id', env.spaceId)
-      .then(report('conversations.genesis'));
-
   return {
     upsertProfile, upsertRelationship, syncInvite,
-    upsertSpaceEvent, upsertGenesis,
 
     // Espelha uma transição de contato: relationship nos dois sentidos conhecidos
     // localmente + desfecho do convite pendente. Chamado em 'contacts.changed'.
@@ -133,11 +113,9 @@ export function createPersistence({ client } = {}) {
     async mirrorEvent(env, sp) {
       try {
         await upsertProfile(env.author);
-        await upsertSpaceEvent(env); // todos os tipos aplicados vao ao mailbox
         switch (env.type) {
           case 'space.genesis': {
             await upsertConversation(sp, env.author);
-            await upsertGenesis(env);
             for (const m of sp?.members || []) await upsertMember(sp.id, m);
             for (const a of sp?.admins || []) await upsertMember(sp.id, a, 'owner');
             break;
@@ -198,46 +176,6 @@ export function createPersistence({ client } = {}) {
         .order('created_at', { ascending: true });
       if (error) { report('invites.list')({ error }); return []; }
       return data || [];
-    },
-
-    // Mailbox: envelopes de um autor mais novos que `afterSeq`; sem `author`
-    // devolve o espaco inteiro ordenado (autor, seq), filtrando `have` no
-    // cliente — convergencia de boot (RF-09). Paginado por range.
-    async spaceEventsSince(spaceId, { author, afterSeq = 0, have = null, limit = 500 } = {}) {
-      const out = [];
-      for (let offset = 0; ; offset += limit) {
-        let q = client.from('space_events').select('envelope')
-          .eq('space_id', spaceId)
-          .order('author', { ascending: true }).order('seq', { ascending: true })
-          .range(offset, offset + limit - 1);
-        if (author) q = q.eq('author', author).gt('seq', afterSeq);
-        const { data, error } = await q;
-        if (error) { report('space_events.list')({ error }); break; }
-        for (const r of data || []) {
-          const env = r?.envelope;
-          if (!env || env.id == null) continue;
-          if (!author && have && (env.seq || 0) <= (have[env.author] || 0)) continue;
-          out.push(env);
-        }
-        if (!data || data.length < limit) break;
-      }
-      return out;
-    },
-
-    // conversas onde sou membro — ponto de partida da convergencia de boot
-    async listMemberships(pubkey) {
-      const { data, error } = await client.from('conversation_members')
-        .select('conversation_id').eq('pubkey', pubkey);
-      if (error) { report('members.list')({ error }); return []; }
-      return (data || []).map(r => r.conversation_id);
-    },
-
-    // genesis assinado de um espaco — reconstrucao de espaco desconhecido
-    async getGenesis(spaceId) {
-      const { data, error } = await client.from('conversations')
-        .select('genesis').eq('id', spaceId).limit(1);
-      if (error) { report('genesis.get')({ error }); return null; }
-      return data?.[0]?.genesis || null;
     },
 
     // Histórico consultável direto do Postgres — independente de Realtime (CA-06).

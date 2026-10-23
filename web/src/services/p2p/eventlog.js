@@ -53,9 +53,6 @@ export async function applyEvent(env, store) {
 // desse caminho ou a UI nunca vê as próprias ações do usuário).
 let localListener = null;
 export function setLocalEventListener(fn) { localListener = fn; }
-// eventos gravados fora do emitEvent (ex.: genesis em createSpace) tambem
-// notificam a UI e o espelho — mesmo caminho dos eventos emitidos
-export function notifyLocalEvent(env) { localListener?.(env); }
 
 // emite evento local assinado com seq = maxLocal+1
 export async function emitEvent(identity, spaceId, type, body, store, { persist = true } = {}) {

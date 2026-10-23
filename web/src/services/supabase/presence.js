@@ -17,9 +17,8 @@ export function createPresence({ pubkey, profile = {}, onPeer, client } = {}) {
   });
   const watched = new Map(); // peerPub -> channel
 
-  // status: 'online'|'idle'|'dnd'|'offline' (invisible publica 'offline')
   const payload = (state = {}) => ({
-    displayName: profile.displayName || '', status: 'online', ts: Date.now(), ...state,
+    displayName: profile.displayName || '', ts: Date.now(), ...state,
   });
 
   // (re)SUBSCRIBED cobre também a reconexão automática do realtime-js
@@ -27,16 +26,12 @@ export function createPresence({ pubkey, profile = {}, onPeer, client } = {}) {
     if (status === 'SUBSCRIBED') myChannel.track(payload()).catch(() => {});
   });
 
-  const lastState = new Map(); // peerPub -> status do track ('online'|...) | 'offline'
+  const lastState = new Map(); // peerPub -> 'online' | 'offline' (último sync)
 
   const syncPeer = (peerPub) => {
     const ch = watched.get(peerPub);
     if (!ch) return;
-    // presenceState: {pubkey: [metas]} — pega o meta mais recente; o status do
-    // track (idle/dnd) vale mais que o online binário
-    const metas = Object.values(ch.presenceState()).flat();
-    const latest = metas.reduce((a, b) => (a && (a.ts ?? 0) >= (b?.ts ?? 0) ? a : b), null);
-    const state = latest ? (latest.status || 'online') : 'offline';
+    const state = Object.keys(ch.presenceState()).length > 0 ? 'online' : 'offline';
     lastState.set(peerPub, state);
     onPeer?.(peerPub, state);
   };
@@ -64,8 +59,6 @@ export function createPresence({ pubkey, profile = {}, onPeer, client } = {}) {
     unwatchPeer,
     // último estado visto no hub — 'offline' se nunca observado
     stateOf: (peerPub) => lastState.get(peerPub) || 'offline',
-    // distingue "observado e offline" de "nunca observado" (para o relay)
-    isWatching: (peerPub) => watched.has(peerPub),
 
     dispose() {
       for (const peerPub of [...watched.keys()]) unwatchPeer(peerPub);

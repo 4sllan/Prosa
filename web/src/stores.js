@@ -4,7 +4,6 @@ import { configureRealtime, connectRealtime, closeRealtime } from './services/re
 import * as services from './services/index.js';
 import { readyP2PIdentity } from './services/p2p/identity.js';
 import { initP2PNode } from './services/p2p/node.js';
-import { createPresenceSources } from './services/presence-sources.js';
 
 export { getToken, setToken, fullUrl } from './api.js';
 export * as services from './services/index.js';
@@ -22,7 +21,6 @@ export const store = reactive({
   members: [],
   activeChannelId: null,
   messages: {},        // channelId -> array
-  sendStates: {},      // messageId -> 'sending'|'unconfirmed' (entregue = ausente)
   typing: {},          // channelId -> {userId: ts}
   dms: [],
   relationships: [],
@@ -113,12 +111,6 @@ function dispatch(t, d) {
   }
 }
 
-// presença: duas fontes reconciliadas (DC > hub > offline) — peer.closed não
-// derruba quem segue online no hub, e o hub não apaga status rico do DC
-const presenceSources = createPresenceSources({
-  onChange: (userId, resolved) => { store.presences[userId] = resolved; },
-});
-
 // eventos vindos do nó P2P (domínio + controle)
 async function dispatchP2P(t, d) {
   switch (t) {
@@ -138,9 +130,9 @@ async function dispatchP2P(t, d) {
       }
       break;
     }
-    case 'presence': presenceSources.update(d.source === 'dc' ? 'dc' : 'hub', d.peerId, d.presence || 'online'); break;
-    case 'peer.open': presenceSources.dcOpen(d.peerId); break;
-    case 'peer.closed': presenceSources.dcClosed(d.peerId); break;
+    case 'presence': store.presences[d.peerId] = d.presence || 'online'; break;
+    case 'peer.open': store.presences[d.peerId] = 'online'; break;
+    case 'peer.closed': store.presences[d.peerId] = 'offline'; break;
     case 'contacts.changed': loadRelationships().catch(() => {}); break;
     case 'spaces.changed': loadDms().catch(() => {}); loadCommunities().catch(() => {}); break;
     case 'typing': {
@@ -254,17 +246,7 @@ export async function sendMessage(channelId, content, { replyTo, files, attachme
     const up = await services.files.upload(files);
     attachments = [...attachments, ...up.files];
   }
-  const r = await services.messages.send(channelId, { content, replyTo, attachments });
-  // estado de envio (P2P): 'sending' ate >=1 ACK ou confirmacao do relay;
-  // 'unconfirmed' no timeout — ausente = entregue/nao rastreado
-  const mid = r?.message?.id;
-  if (mid && r.delivery) {
-    store.sendStates[mid] = 'sending';
-    r.delivery.then(st => {
-      if (st === 'delivered') delete store.sendStates[mid];
-      else store.sendStates[mid] = 'unconfirmed';
-    }).catch(() => {});
-  }
+  await services.messages.send(channelId, { content, replyTo, attachments });
 }
 
 export function presenceOf(userId) {
