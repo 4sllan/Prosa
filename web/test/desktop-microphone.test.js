@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import microphone from '../desktop/microphone.cjs';
 import permissions from '../desktop/permissions.cjs';
+import screenSharing from '../desktop/screen-sharing.cjs';
 
 const { createMicrophoneAccessHandler } = microphone;
 const appUrl = 'file:///tmp/prosa-microphone-test/dist/index.html';
@@ -179,6 +180,16 @@ test('microphone: real main registers the handler and trusts only its own window
   const windows = [];
   let ready;
   let nativeCalls = 0;
+  let displayHandler;
+  let displayRegistrations = 0;
+  const session = {
+    setPermissionRequestHandler() {}, setPermissionCheckHandler() {},
+    setDisplayMediaRequestHandler(handler, options) {
+      assert.equal(options.useSystemPicker, false);
+      displayHandler = handler;
+      displayRegistrations++;
+    },
+  };
   class BrowserWindow {
     constructor(options) {
       assert.equal(options.webPreferences.contextIsolation, true);
@@ -187,12 +198,12 @@ test('microphone: real main registers the handler and trusts only its own window
       this.webContents = {
         mainFrame: { url: pathToFileURL(path.join(desktop, '..', 'dist', 'index.html')).href },
         isDestroyed: () => false,
-        session: { setPermissionRequestHandler() {}, setPermissionCheckHandler() {} },
+        session,
         setWindowOpenHandler() {}, on() {},
       };
       windows.push(this);
     }
-    loadFile() {}
+    loadFile() { assert.equal(typeof displayHandler, 'function'); }
   }
   const modules = {
     electron: {
@@ -200,11 +211,14 @@ test('microphone: real main registers the handler and trusts only its own window
       BrowserWindow, shell: {},
       ipcMain: { handle: (channel, callback) => handlers.set(channel, callback) },
       systemPreferences: { getMediaAccessStatus: () => { nativeCalls++; return 'granted'; } },
+      webContents: { fromFrame: frame => windows.find(win => win.webContents.mainFrame === frame)?.webContents },
+      desktopCapturer: { getSources: () => assert.fail('unexpected enumeration') },
     },
     'node:path': path, 'node:url': { pathToFileURL },
     './store.cjs': { init: async () => 'mock', ops: {} },
     './identity.cjs': { init() {} },
     './permissions.cjs': permissions, './microphone.cjs': microphone,
+    './screen-sharing.cjs': screenSharing,
   };
   vm.runInNewContext(readFileSync(path.join(desktop, 'main.cjs'), 'utf8'), {
     __dirname: desktop, process: { platform: 'darwin', env: {} },
@@ -219,4 +233,11 @@ test('microphone: real main registers the handler and trusts only its own window
   const other = new BrowserWindow({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
   await assert.rejects(handler({ sender: other.webContents, senderFrame: other.webContents.mainFrame }), /not allowed/);
   assert.equal(nativeCalls, 1);
+  assert.equal(typeof handlers.get('media:screen-response'), 'function');
+  assert.equal(typeof handlers.get('media:screen-cancel'), 'function');
+  assert.equal(displayRegistrations, 1);
+  const denied = [];
+  displayHandler({ frame: other.webContents.mainFrame, userGesture: true, videoRequested: true },
+    result => denied.push(result));
+  assert.deepEqual(denied, [{}]);
 });

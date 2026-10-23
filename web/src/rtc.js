@@ -17,11 +17,15 @@ export const rtc = reactive({
   remoteStreams: {}, // `${channelId}:${userId}` -> MediaStream
   speaking: {},    // userId -> bool (detecção local, não propagada)
   microphone: { phase: 'idle', target: null, error: null },
+  screenSharing: { phase: 'idle', requestId: null, sources: [], error: null },
 });
 
 const myId = () => store.user?.id;
 let joinAttempt = null, audioSession = null;
 let removeAudioListeners = () => {};
+let screenAttempt = null, screenCapture = null, screenSession = null;
+let latestScreenAttempt = null;
+const retiredScreenRequests = new Set();
 
 function makePc(channelId, peerId) {
   const key = `${channelId}:${peerId}`;
@@ -238,6 +242,7 @@ function stopStream(stream) {
 
 async function endVoiceSession() {
   const channelId = rtc.channelId;
+  void stopScreen(false);
   audioSession = null;
   removeAudioListeners();
   removeAudioListeners = () => {};
@@ -247,7 +252,6 @@ async function endVoiceSession() {
   for (const key of [...rtc.peers.keys()]) { const [ch, uid] = key.split(':'); dropPeer(ch, uid); }
   stopSpeaking();
   stopStream(rtc.localStream);
-  stopStream(rtc.screenStream);
   rtc.localStream = null; rtc.screenStream = null;
   rtc.channelId = null; rtc.channelName = null; rtc.video = false; rtc.screen = false; rtc.muted = false; rtc.deafened = false; rtc.speakerMuted = false;
   // Local cleanup must not depend on successful signaling or touch a newer session.
@@ -293,24 +297,188 @@ export async function toggleVideo() {
 }
 
 export async function toggleScreen() {
-  if (!rtc.screen) {
-    rtc.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    const track = rtc.screenStream.getVideoTracks()[0];
-    track.onended = () => toggleScreen();
-    for (const { pc } of rtc.peers.values()) pc.addTrack(track, rtc.screenStream);
-    rtc.screen = true;
-  } else {
-    rtc.screenStream?.getTracks().forEach(t => {
-      t.stop();
-      for (const { pc } of rtc.peers.values()) {
-        const s = pc.getSenders().find(s => s.track === t);
-        if (s) pc.removeTrack(s);
+  if (rtc.screen) return stopScreen();
+  if (screenAttempt || !rtc.channelId || !audioSession || joinAttempt) return;
+  // getDisplayMedia cannot be aborted; do not overlap an invalidated native picker.
+  if (screenCapture) { screenState('error', { code: 'capture-pending' }); return; }
+  const desktop = window.prosaDesktop;
+  const attempt = {
+    channelId: rtc.channelId, voiceSession: audioSession, bridge: null,
+    requestId: null, remove: [], responding: false,
+  };
+  latestScreenAttempt = screenAttempt = screenCapture = attempt;
+  screenState('initializing');
+  let stream, session, failureCode = 'capture-unavailable';
+  try {
+    if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen capture unavailable');
+    if (desktop?.isDesktop) {
+      failureCode = 'desktop-unavailable';
+      attempt.bridge = desktop.screenSharing;
+      const bridge = attempt.bridge;
+      if (!['onRequest', 'onResult', 'respond', 'cancel'].every(key => typeof bridge?.[key] === 'function')) {
+        throw new Error('Screen sharing bridge unavailable');
       }
-    });
-    rtc.screenStream = null;
-    rtc.screen = false;
+      attempt.remove.push(bridge.onRequest(data => receiveScreenRequest(attempt, data)));
+      attempt.remove.push(bridge.onResult(data => receiveScreenResult(attempt, data)));
+      if (attempt.remove.some(remove => typeof remove !== 'function')) throw new Error('Invalid screen subscription');
+    }
+    failureCode = 'capture-failed';
+    // Keep this call in the click's stack, without awaiting bridge operations.
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    if (!currentScreenAttempt(attempt)) { stopStream(stream); return; }
+    const track = stream?.getVideoTracks?.().find(t => t.readyState === 'live');
+    failureCode = 'capture-unavailable';
+    if (!track) throw new Error('No live screen track');
+    detachScreenAttempt(attempt);
+    screenAttempt = screenCapture = null;
+    session = { channelId: attempt.channelId, voiceSession: attempt.voiceSession, attempt, track };
+    screenSession = session;
+    rtc.screenStream = stream;
+    const ended = () => { if (screenSession === session) void stopScreen(); };
+    track.addEventListener('ended', ended);
+    session.removeEnded = () => track.removeEventListener('ended', ended);
+    failureCode = 'capture-failed';
+    for (const { pc } of rtc.peers.values()) pc.addTrack(track, stream);
+    if (track.readyState !== 'live') throw new Error('Screen track ended');
+    rtc.screen = true;
+    screenState('active');
+    failureCode = 'signaling-failed';
+    await events.updateVoice(session.channelId, { screen: true });
+  } catch (error) {
+    if (session) {
+      if (screenSession !== session) return;
+      await stopScreen();
+      if (audioSession === session.voiceSession && latestScreenAttempt === attempt && !screenSession && !screenAttempt) {
+        screenState('error', { code: failureCode });
+      }
+    } else {
+      stopStream(stream);
+      if (!currentScreenAttempt(attempt)) return;
+      if (failureCode === 'capture-failed') {
+        failureCode = ({
+          NotAllowedError: 'capture-blocked', NotFoundError: 'no-sources',
+          NotReadableError: 'capture-unreadable', InvalidStateError: 'capture-unavailable',
+        })[error?.name] || failureCode;
+      }
+      endScreenAttempt(attempt, { code: failureCode });
+    }
+  } finally {
+    // A late argument-free cancel IPC must not cancel the next native request.
+    await attempt.cancellation;
+    if (screenCapture === attempt) screenCapture = null;
   }
-  events.updateVoice(rtc.channelId, { screen: rtc.screen });
+}
+
+function screenState(phase, error = null, requestId = null, sources = []) {
+  Object.assign(rtc.screenSharing, { phase, error, requestId, sources });
+}
+
+function currentScreenAttempt(attempt) {
+  return screenAttempt === attempt && audioSession === attempt.voiceSession && rtc.channelId === attempt.channelId;
+}
+
+function detachScreenAttempt(attempt) {
+  for (const remove of attempt.remove.splice(0)) {
+    try { remove(); } catch {}
+  }
+  if (attempt.requestId) {
+    retiredScreenRequests.add(attempt.requestId);
+    if (retiredScreenRequests.size > 128) retiredScreenRequests.delete(retiredScreenRequests.values().next().value);
+  }
+}
+
+function cancelNativeScreen(attempt) {
+  try { attempt.cancellation = Promise.resolve(attempt.bridge?.cancel()).catch(() => {}); } catch {}
+}
+
+function endScreenAttempt(attempt, error = null, cancelNative = true) {
+  if (!currentScreenAttempt(attempt)) return;
+  screenAttempt = null;
+  detachScreenAttempt(attempt);
+  screenState(error ? 'error' : 'idle', error);
+  if (cancelNative) cancelNativeScreen(attempt);
+}
+
+export function cancelScreen() {
+  if (screenAttempt) endScreenAttempt(screenAttempt);
+  else if (!rtc.screen) screenState('idle');
+}
+
+function screenRequestMatches(attempt, data) {
+  return currentScreenAttempt(attempt) && typeof data?.requestId === 'string'
+    && data.requestId.length > 0 && data.requestId.length <= 64
+    && !retiredScreenRequests.has(data.requestId)
+    && (!attempt.requestId || data.requestId === attempt.requestId);
+}
+
+function receiveScreenRequest(attempt, data) {
+  if (!screenRequestMatches(attempt, data) || attempt.requestId) return;
+  if (!Array.isArray(data.sources) || !data.sources.length || data.sources.length > 128
+    || data.sources.some(source => !source || typeof source.id !== 'string' || !source.id.length
+      || source.id.length > 64 || typeof source.name !== 'string' || typeof source.thumbnail !== 'string')) {
+    endScreenAttempt(attempt, { code: 'capture-failed' });
+    return;
+  }
+  attempt.requestId = data.requestId;
+  screenState('selecting', null, data.requestId, data.sources);
+}
+
+function receiveScreenResult(attempt, data) {
+  if (!screenRequestMatches(attempt, data)) return;
+  if (!['selected', 'cancelled', 'error'].includes(data.status)) return;
+  attempt.requestId = data.requestId;
+  if (data.status === 'selected') {
+    screenState('capturing');
+  } else {
+    const codes = ['no-sources', 'source-unavailable', 'timeout', 'capture-failed'];
+    if (window.prosaDesktop?.platform === 'darwin') codes.push('permission-denied', 'permission-restricted');
+    const error = data.status === 'error' ? { code: codes.includes(data.code) ? data.code : 'capture-failed' } : null;
+    endScreenAttempt(attempt, error, false);
+  }
+}
+
+export async function selectScreenSource(requestId, sourceId) {
+  const attempt = screenAttempt;
+  if (!attempt || !currentScreenAttempt(attempt) || attempt.requestId !== requestId || attempt.responding
+    || rtc.screenSharing.phase !== 'selecting'
+    || !rtc.screenSharing.sources.some(source => source.id === sourceId)) return;
+  attempt.responding = true;
+  screenState('capturing');
+  try {
+    const accepted = await attempt.bridge.respond({ requestId, sourceId });
+    if (currentScreenAttempt(attempt) && accepted !== true) endScreenAttempt(attempt, { code: 'capture-failed' });
+  } catch {
+    endScreenAttempt(attempt, { code: 'desktop-unavailable' });
+  }
+}
+
+export async function stopScreen(notify = true) {
+  cancelScreen();
+  const session = screenSession;
+  const stream = rtc.screenStream;
+  screenSession = null;
+  session?.removeEnded?.();
+  rtc.screenStream = null;
+  rtc.screen = false;
+  screenState('idle');
+  const tracks = stream?.getTracks() || [];
+  for (const { pc } of rtc.peers.values()) {
+    try {
+      for (const sender of pc.getSenders()) {
+        if (tracks.includes(sender.track)) {
+          try { pc.removeTrack(sender); } catch {}
+        }
+      }
+    } catch {}
+  }
+  stopStream(stream);
+  if (notify && session && rtc.channelId === session.channelId && audioSession === session.voiceSession) {
+    try { await events.updateVoice(session.channelId, { screen: false }); } catch {
+      if (audioSession === session.voiceSession && latestScreenAttempt === session.attempt && !screenSession && !screenAttempt) {
+        screenState('error', { code: 'signaling-failed' });
+      }
+    }
+  }
 }
 
 export function toggleDeafen() {

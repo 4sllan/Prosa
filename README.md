@@ -162,6 +162,17 @@ Artefatos: `release/Prosa-<versão>-amd64.deb` e `Prosa-<versão>-arm64.deb`. In
 - No navegador, as permissões continuam sob controle do navegador; use HTTPS ou localhost. Electron dev e app empacotado podem ter identidades/permissões diferentes no macOS: valide no pacote que será usado, sem resetar permissões ou apagar perfis para testar.
 - Testes simulados e build web não comprovam consentimento nativo, captura física ou transmissão para outro participante.
 
+**Compartilhamento de tela**
+- Durante uma chamada, use **Compartilhar tela** (ou **Tela** na barra de voz). No Electron, escolha explicitamente uma tela ou janela no seletor do Prosa; nenhuma fonte é compartilhada automaticamente. No navegador, a seleção continua sendo feita pelo próprio navegador.
+- O seletor mostra nomes e miniaturas quando disponíveis. Use Tab/Shift+Tab para navegar, Enter/Espaço para escolher ou **Cancelar**/Escape para sair. O foco retorna ao controle de origem quando ele ainda estiver disponível.
+- O controle indica espera durante a preparação e só fica ativo após obter vídeo válido. Use **Parar de compartilhar tela** para encerrar; a interrupção pelo sistema também encerra a captura. A câmera e o áudio da chamada são preservados.
+- Falhas aparecem com **Tentar novamente** e **Dispensar**. Cancelar ou sair/trocar de chamada invalida a tentativa, e uma captura que terminar depois é descartada. A seleção no app expira após 60 segundos.
+- `getDisplayMedia` não permite abortar o seletor do navegador. Após cancelar localmente, feche também esse seletor, se aberto; outra tentativa aguarda o encerramento da anterior. Cancelamento e bloqueio podem produzir o mesmo erro no navegador, por isso a interface não afirma que houve negativa de permissão sem evidência.
+- No macOS, a autorização de tela é separada da autorização do microfone. Quando houver negativa/restrição confirmada, confira **Ajustes do Sistema > Privacidade e Segurança > Gravação de Tela** (ou **Gravação de Tela e Áudio do Sistema**, conforme a versão). Após alterar uma negativa, pode ser necessário encerrar e reabrir o Prosa. Não é necessário resetar permissões nem apagar o perfil para testar.
+- Apenas vídeo da tela/janela é solicitado: áudio do sistema não faz parte deste fluxo. Nomes, miniaturas e identificadores de fontes são transitórios e não são enviados aos participantes nem persistidos. No Electron, a enumeração e a autorização da fonte ficam no processo principal; o renderer usa operações IPC restritas.
+- A disponibilidade das fontes depende do Electron e do sistema; no Linux/Wayland, o portal pode controlar a seleção ou limitar a lista. O navegador precisa oferecer `getDisplayMedia` em contexto seguro (HTTPS ou localhost). Windows/Linux e captura física no pacote macOS ainda exigem validação específica; testes simulados/build não comprovam suporte real nessas plataformas.
+- **Limite de WebRTC:** abrir o seletor e exibir a prévia local não comprovam transmissão para outro participante. O motor atual não faz renegociação explícita ao adicionar/remover trilhas; a correção dessa entrega remota não faz parte desta mudança.
+
 **Pendências para distribuição pública**
 - Assinatura Developer ID + notarização Apple (o build atual é ad-hoc: em outra máquina, `xattr -cr /Applications/Prosa.app` se o Gatekeeper reclamar).
 - Windows: os `.exe` não são assinados — o SmartScreen exibirá aviso ("Mais informações → Executar assim mesmo"). Para suprimir: certificado de code-signing (EV ou OV com reputação).

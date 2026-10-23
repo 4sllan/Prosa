@@ -139,6 +139,7 @@
         </div>
       </div>
       <MicrophoneStatus @retry="requestJoinVoice" />
+      <ScreenSharePicker />
     </main>
 
 
@@ -228,6 +229,7 @@ import { rtc, joinVoice, toggleMute, toggleSpeaker } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
 import VoiceStage from '../components/VoiceStage.vue';
 import MicrophoneStatus from '../components/MicrophoneStatus.vue';
+import ScreenSharePicker from '../components/ScreenSharePicker.vue';
 import ConnectionsView from '../components/ConnectionsView.vue';
 import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';

@@ -28,7 +28,7 @@
       <button :class="{ on: !rtc.speakerMuted }" @click="toggleSpeaker"><VolumeX v-if="rtc.speakerMuted" :size="14" aria-hidden="true" /><Volume2 v-else :size="14" aria-hidden="true" /> {{ rtc.speakerMuted ? 'Sem som' : 'Alto-falante' }}</button>
       <span class="stage-controls-divider" aria-hidden="true"></span>
       <button class="icon-control" :class="{ on: rtc.video }" :aria-pressed="rtc.video" aria-label="Câmera" title="Câmera" @click="toggleVideo"><Video :size="18" aria-hidden="true" /></button>
-      <button class="icon-control" :class="{ on: rtc.screen }" :aria-pressed="rtc.screen" aria-label="Compartilhar tela" title="Compartilhar tela" @click="toggleScreen"><ScreenShare :size="18" aria-hidden="true" /></button>
+      <button class="icon-control" :class="{ on: rtc.screen }" :aria-pressed="rtc.screen" :aria-busy="screenPending" :disabled="screenPending" :aria-label="screenLabel" :title="screenLabel" data-screen-share @click="toggleScreen"><ScreenShare :size="18" aria-hidden="true" /></button>
       <button class="icon-control" :class="{ on: rtc.deafened }" :aria-pressed="rtc.deafened" aria-label="Surdo" title="Surdo" @click="toggleDeafen"><HeadphoneOff :size="18" aria-hidden="true" /></button>
       <span class="stage-controls-divider" aria-hidden="true"></span>
       <button class="leave" @click="leaveVoice">Sair</button>
@@ -48,6 +48,9 @@ let localVideo = null;
 const localStream = computed(() => rtc.screen ? rtc.screenStream : rtc.video ? rtc.localStream : null);
 const members = computed(() => store.voice[props.channel.id] || []);
 const microphoneReady = computed(() => rtc.microphone.phase === 'ready');
+const screenPending = computed(() => ['initializing', 'selecting', 'capturing'].includes(rtc.screenSharing.phase));
+const screenLabel = computed(() => screenPending.value ? 'Aguardando compartilhamento de tela'
+  : rtc.screen ? 'Parar de compartilhar tela' : 'Compartilhar tela');
 const inThisChannel = computed(() => rtc.channelId === props.channel.id && ['ready', 'error'].includes(rtc.microphone.phase));
 
 function initials(n) { return String(n || '?').slice(0, 2).toUpperCase(); }

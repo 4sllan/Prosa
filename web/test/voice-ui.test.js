@@ -72,6 +72,7 @@ function fixture(t) {
     channelId: null, channelName: null, muted: false, speakerMuted: false, deafened: false,
     video: false, screen: false, localStream: null, screenStream: null, remoteStreams: {}, speaking: {},
     microphone: { phase: 'idle', target: null, error: null },
+    screenSharing: { phase: 'idle', requestId: null, sources: [], error: null },
   });
   const store = Vue.reactive({
     user: { id: 'self', displayName: 'Local', username: 'local' }, appName: 'Prosa',
@@ -111,7 +112,7 @@ function fixture(t) {
     '../assets/logotipo-prosa.png': 'logo',
   };
   for (const name of ['ChatView', 'VoiceStage', 'ConnectionsView', 'AdminPanel',
-    'CommunitySettings', 'UserSettings', 'ContextMenu']) modules[`../components/${name}.vue`] = empty;
+    'CommunitySettings', 'UserSettings', 'ContextMenu', 'ScreenSharePicker']) modules[`../components/${name}.vue`] = empty;
   modules['../components/MicrophoneStatus.vue'] = component('../src/components/MicrophoneStatus.vue', modules);
   function mount(file, props = {}) {
     const root = element('root');

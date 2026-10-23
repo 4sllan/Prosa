@@ -16,7 +16,7 @@
       <button :class="{ on: microphoneReady && !rtc.muted }" :disabled="!microphoneReady" @click="toggleMute"><MicOff v-if="!microphoneReady || rtc.muted" :size="14" aria-hidden="true" /><Mic v-else :size="14" aria-hidden="true" /> {{ !microphoneReady ? 'Microfone indisponível' : rtc.muted ? 'Mudo' : 'Microfone' }}</button>
       <button :class="{ on: !rtc.speakerMuted }" @click="toggleSpeaker"><VolumeX v-if="rtc.speakerMuted" :size="14" aria-hidden="true" /><Volume2 v-else :size="14" aria-hidden="true" /> {{ rtc.speakerMuted ? 'Sem som' : 'Alto-falante' }}</button>
       <button :class="{ on: rtc.video }" @click="toggleVideo"><Video :size="14" aria-hidden="true" /> Câmera</button>
-      <button :class="{ on: rtc.screen }" @click="toggleScreen"><ScreenShare :size="14" aria-hidden="true" /> Tela</button>
+      <button :class="{ on: rtc.screen }" :aria-pressed="rtc.screen" :aria-busy="screenPending" :disabled="screenPending" :aria-label="screenLabel" :title="screenLabel" data-screen-share @click="toggleScreen"><ScreenShare :size="14" aria-hidden="true" /> {{ screenPending ? 'Aguardando...' : rtc.screen ? 'Parar tela' : 'Tela' }}</button>
       <button :class="{ on: rtc.deafened }" @click="toggleDeafen"><HeadphoneOff :size="14" aria-hidden="true" /> Surdo</button>
       <button class="leave" @click="leaveVoice">Sair</button>
     </div>
@@ -31,6 +31,9 @@ import { Volume2, VolumeX, Mic, MicOff, Video, ScreenShare, HeadphoneOff } from 
 
 const localVideo = ref(null);
 const microphoneReady = computed(() => rtc.microphone.phase === 'ready');
+const screenPending = computed(() => ['initializing', 'selecting', 'capturing'].includes(rtc.screenSharing.phase));
+const screenLabel = computed(() => screenPending.value ? 'Aguardando compartilhamento de tela'
+  : rtc.screen ? 'Parar de compartilhar tela' : 'Compartilhar tela');
 const others = computed(() => (store.voice[rtc.channelId] || []).filter(v => v.userId !== store.user.id));
 const channelName = computed(() => rtc.channelName || store.channels.find(c => c.id === rtc.channelId)?.name || 'voz');
 

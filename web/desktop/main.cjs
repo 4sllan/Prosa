@@ -1,10 +1,11 @@
-const { app, BrowserWindow, shell, ipcMain, systemPreferences } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, systemPreferences, desktopCapturer, webContents } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const store = require('./store.cjs');
 const identity = require('./identity.cjs');
 const { canUsePermission } = require('./permissions.cjs');
 const { createMicrophoneAccessHandler } = require('./microphone.cjs');
+const { createScreenSharingHandler } = require('./screen-sharing.cjs');
 
 // Dev: PROSA_DEV_URL=http://localhost:5173 carrega o Vite; senão, dist/ local.
 const DEV_URL = process.env.PROSA_DEV_URL || '';
@@ -12,6 +13,17 @@ const API_URL = process.env.PROSA_API_URL || ''; // backend remoto configurável
 
 const APP_URL = DEV_URL || pathToFileURL(path.join(__dirname, '..', 'dist', 'index.html')).href;
 const appWebContents = new WeakSet();
+const screenSharingSessions = new WeakSet();
+const screenSharing = createScreenSharingHandler({
+  appUrl: APP_URL,
+  isAppWebContents: wc => appWebContents.has(wc),
+  fromFrame: frame => webContents.fromFrame(frame),
+  desktopCapturer,
+  platform: process.platform,
+  systemPreferences,
+});
+ipcMain.handle('media:screen-response', screenSharing.respond);
+ipcMain.handle('media:screen-cancel', screenSharing.cancel);
 
 ipcMain.handle('media:ensure-microphone-access', createMicrophoneAccessHandler({
   platform: process.platform,
@@ -39,6 +51,11 @@ function createWindow() {
     },
   });
   appWebContents.add(win.webContents);
+  const session = win.webContents.session;
+  if (!screenSharingSessions.has(session)) {
+    session.setDisplayMediaRequestHandler(screenSharing.request, { useSystemPicker: false });
+    screenSharingSessions.add(session);
+  }
 
   const permissionAllowed = (wc, permission, details) => canUsePermission(permission, {
     ...details, requestingUrl: details?.requestingUrl || wc?.getURL(),
