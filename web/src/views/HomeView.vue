@@ -78,7 +78,7 @@
           <div class="status">{{ presenceLabel }}</div>
         </span>
         <span class="acts">
-          <button @click="toggleMute" :title="rtc.muted ? 'Desmutar microfone' : 'Mutar microfone'"><MicOff v-if="rtc.muted" :size="16" aria-hidden="true" /><Mic v-else :size="16" aria-hidden="true" /></button>
+          <button @click="toggleMute" :disabled="!microphoneReady" :title="microphoneLabel" :aria-label="microphoneLabel"><MicOff v-if="!microphoneReady || rtc.muted" :size="16" aria-hidden="true" /><Mic v-else :size="16" aria-hidden="true" /></button>
           <button @click="toggleSpeaker" :title="rtc.speakerMuted ? 'Ativar alto-falante' : 'Desativar alto-falante'"><VolumeX v-if="rtc.speakerMuted" :size="16" aria-hidden="true" /><Volume2 v-else :size="16" aria-hidden="true" /></button>
           <button v-if="store.user?.isAdmin" @click="view = 'admin'" title="Admin"><Shield :size="16" aria-hidden="true" /></button>
           <button @click="showUserSettings = true" title="Configurações"><Settings :size="16" aria-hidden="true" /></button>
@@ -138,6 +138,7 @@
           <span><ShieldCheck :size="12" aria-hidden="true" /> P2P encrypt</span>
         </div>
       </div>
+      <MicrophoneStatus @retry="requestJoinVoice" />
     </main>
 
 
@@ -172,7 +173,7 @@
       <div class="modal">
         <h2>Trocar de canal de voz?</h2>
         <p style="margin:0;color:var(--fg-dim)">Você já está conectado ao canal de voz <b style="color:var(--fg)">{{ currentVoiceName }}</b>. Deseja sair dele e entrar no canal <b style="color:var(--fg)">{{ voiceSwitch.name }}</b>?</p>
-        <div class="actions"><button class="btn ghost" @click="voiceSwitch = null">Cancelar</button><button class="btn primary" @click="confirmVoiceSwitch">Confirmar</button></div>
+        <div class="actions"><button class="btn ghost" @click="voiceSwitch = null">Cancelar</button><button class="btn primary" :disabled="voicePending" @click="confirmVoiceSwitch">Confirmar</button></div>
       </div>
     </div>
 
@@ -226,6 +227,7 @@ import logoUrl from '../assets/logotipo-prosa.png';
 import { rtc, joinVoice, toggleMute, toggleSpeaker } from '../rtc.js';
 import ChatView from '../components/ChatView.vue';
 import VoiceStage from '../components/VoiceStage.vue';
+import MicrophoneStatus from '../components/MicrophoneStatus.vue';
 import ConnectionsView from '../components/ConnectionsView.vue';
 import AdminPanel from '../components/AdminPanel.vue';
 import CommunitySettings from '../components/CommunitySettings.vue';
@@ -244,6 +246,10 @@ const newChannelName = ref(''), newChannelCat = ref(null);
 const groupName = ref(''), groupSel = ref([]);
 const searchQ = ref(''), searchResults = ref(null);
 const voiceSwitch = ref(null);
+const voicePending = computed(() => ['requesting', 'initializing'].includes(rtc.microphone.phase));
+const microphoneReady = computed(() => rtc.microphone.phase === 'ready');
+const microphoneLabel = computed(() => microphoneReady.value
+  ? (rtc.muted ? 'Desmutar microfone' : 'Mutar microfone') : 'Microfone indisponível');
 const chatOpen = ref(false);
 const inviteFor = ref(null), inviteBusy = ref(false), inviteError = ref('');
 let searchTimer = null;
@@ -331,11 +337,13 @@ async function toggleChannelChat(ch) {
 }
 
 async function requestJoinVoice(ch) {
+  if (voicePending.value) return;
   if (rtc.channelId && rtc.channelId !== ch.id) { voiceSwitch.value = { id: ch.id, name: ch.name }; return; }
   await joinVoice(ch.id, ch.name);
 }
 
 async function confirmVoiceSwitch() {
+  if (voicePending.value) return;
   const target = voiceSwitch.value;
   voiceSwitch.value = null;
   if (!target) return;
@@ -461,6 +469,7 @@ watch(() => route.params.channelId, async (chId) => {
 
 <style scoped>
 .friends-back { display: none; }
+.userbar .acts button:disabled, .modal .actions button:disabled { opacity: .5; cursor: default; }
 .invite-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
 .invite-item {
   display: flex; align-items: center; gap: 10px; padding: 9px 10px;

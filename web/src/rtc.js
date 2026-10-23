@@ -16,9 +16,12 @@ export const rtc = reactive({
   screen: false,
   remoteStreams: {}, // `${channelId}:${userId}` -> MediaStream
   speaking: {},    // userId -> bool (detecção local, não propagada)
+  microphone: { phase: 'idle', target: null, error: null },
 });
 
 const myId = () => store.user?.id;
+let joinAttempt = null, audioSession = null;
+let removeAudioListeners = () => {};
 
 function makePc(channelId, peerId) {
   const key = `${channelId}:${peerId}`;
@@ -155,31 +158,114 @@ function stopSpeaking() {
 }
 
 export async function joinVoice(channelId, name) {
-  if (rtc.channelId === channelId) return;
-  await leaveVoice();
-  rtc.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  rtc.channelName = name ?? null;
-  rtc.channelId = channelId;
-  events.joinVoice(channelId);
-  store.voice[channelId] = (await misc.voiceState(channelId)).members;
-  startSpeaking();
+  if (joinAttempt || rtc.channelId === channelId) return;
+  const attempt = {};
+  joinAttempt = attempt;
+  rtc.microphone.target = { id: channelId, name: name ?? null };
+  rtc.microphone.error = null;
+  rtc.microphone.phase = 'initializing';
+  let failureCode = 'voice-join-failed';
+  try {
+    await endVoiceSession();
+    if (joinAttempt !== attempt) return;
+    const desktop = window.prosaDesktop;
+    if (desktop?.isDesktop && desktop.platform === 'darwin') {
+      rtc.microphone.phase = 'requesting';
+      failureCode = 'authorization-failed';
+      const permission = await desktop.ensureMicrophoneAccess();
+      if (joinAttempt !== attempt) return;
+      if (permission?.status !== 'granted') {
+        if (['denied', 'restricted'].includes(permission?.status)) {
+          failureCode = `permission-${permission.status}`;
+        }
+        throw new Error('Microphone authorization unavailable');
+      }
+    }
+    rtc.microphone.phase = 'initializing';
+    failureCode = 'capture-unavailable';
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Microphone capture unavailable');
+    failureCode = 'capture-failed';
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // getUserMedia cannot be aborted; a cancelled request still owns its late stream.
+    if (joinAttempt !== attempt) { stopStream(stream); return; }
+    rtc.localStream = stream;
+    const tracks = stream?.getAudioTracks() || [];
+    failureCode = 'capture-unavailable';
+    if (!tracks.some(t => t.readyState === 'live')) throw new Error('No live microphone track');
+
+    audioSession = attempt;
+    const ended = () => {
+      if (audioSession !== attempt || tracks.some(t => t.readyState === 'live')) return;
+      rtc.microphone.phase = 'error';
+      rtc.microphone.error = { code: 'track-ended' };
+    };
+    tracks.forEach(t => t.addEventListener('ended', ended));
+    removeAudioListeners = () => tracks.forEach(t => t.removeEventListener('ended', ended));
+    rtc.channelName = name ?? null;
+    rtc.channelId = channelId;
+    failureCode = 'voice-join-failed';
+    await events.joinVoice(channelId);
+    if (joinAttempt !== attempt) return;
+    const snapshot = await misc.voiceState(channelId);
+    if (joinAttempt !== attempt) return;
+    failureCode = 'track-ended';
+    if (!tracks.some(t => t.readyState === 'live')) throw new Error('Microphone track ended');
+    failureCode = 'voice-join-failed';
+    store.voice[channelId] = snapshot.members;
+    startSpeaking();
+    rtc.microphone.phase = 'ready';
+  } catch (error) {
+    if (joinAttempt !== attempt) return;
+    if (failureCode === 'capture-failed') {
+      switch (error?.name) {
+        case 'NotAllowedError': failureCode = 'permission-blocked'; break;
+        case 'NotFoundError': failureCode = 'device-not-found'; break;
+        case 'NotReadableError': failureCode = 'device-unreadable'; break;
+      }
+    }
+    await endVoiceSession();
+    if (joinAttempt !== attempt) return;
+    rtc.microphone.phase = 'error';
+    rtc.microphone.error = { code: failureCode };
+  } finally {
+    if (joinAttempt === attempt) joinAttempt = null;
+  }
 }
 
-export async function leaveVoice() {
-  if (!rtc.channelId) return;
+function stopStream(stream) {
+  stream?.getTracks().forEach(t => t.stop());
+}
+
+async function endVoiceSession() {
   const channelId = rtc.channelId;
-  events.leaveVoice(channelId);
+  audioSession = null;
+  removeAudioListeners();
+  removeAudioListeners = () => {};
+  rtc.channelId = null;
   const list = store.voice[channelId];
   if (list) store.voice[channelId] = list.filter(v => v.userId !== myId());
   for (const key of [...rtc.peers.keys()]) { const [ch, uid] = key.split(':'); dropPeer(ch, uid); }
   stopSpeaking();
-  rtc.localStream?.getTracks().forEach(t => t.stop());
-  rtc.screenStream?.getTracks().forEach(t => t.stop());
+  stopStream(rtc.localStream);
+  stopStream(rtc.screenStream);
   rtc.localStream = null; rtc.screenStream = null;
   rtc.channelId = null; rtc.channelName = null; rtc.video = false; rtc.screen = false; rtc.muted = false; rtc.deafened = false; rtc.speakerMuted = false;
+  // Local cleanup must not depend on successful signaling or touch a newer session.
+  if (channelId) {
+    try { await events.leaveVoice(channelId); } catch {}
+  }
+}
+
+export async function leaveVoice() {
+  joinAttempt = null;
+  rtc.microphone.phase = 'idle';
+  rtc.microphone.target = null;
+  rtc.microphone.error = null;
+  await endVoiceSession();
 }
 
 export function toggleMute() {
+  if (rtc.microphone.phase !== 'ready') return;
   rtc.muted = !rtc.muted;
   rtc.localStream?.getAudioTracks().forEach(t => t.enabled = !rtc.muted);
   if (rtc.channelId) events.updateVoice(rtc.channelId, { muted: rtc.muted });

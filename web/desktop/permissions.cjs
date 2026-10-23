@@ -1,10 +1,8 @@
 const ALLOWED_PERMISSIONS = new Set(['media', 'display-capture', 'notifications', 'mediaKeySystem', 'fullscreen']);
 
-function canUsePermission(permission, details, appUrl) {
-  if (permission !== 'clipboard-sanitized-write') return ALLOWED_PERMISSIONS.has(permission);
-  if (!details?.isMainFrame) return false;
+function isTrustedAppUrl(url, appUrl) {
   try {
-    const requester = new URL(details.requestingUrl);
+    const requester = new URL(url);
     const trusted = new URL(appUrl);
     if (trusted.protocol === 'file:') {
       return requester.protocol === 'file:' && requester.host === trusted.host
@@ -14,4 +12,9 @@ function canUsePermission(permission, details, appUrl) {
   } catch { return false; }
 }
 
-module.exports = { canUsePermission };
+function canUsePermission(permission, details, appUrl) {
+  if (permission !== 'clipboard-sanitized-write') return ALLOWED_PERMISSIONS.has(permission);
+  return !!details?.isMainFrame && isTrustedAppUrl(details.requestingUrl, appUrl);
+}
+
+module.exports = { canUsePermission, isTrustedAppUrl };

@@ -24,7 +24,7 @@
     </div>
 
     <div v-if="inThisChannel" class="stage-controls" role="group" aria-label="Controles da chamada">
-      <button :class="{ on: !rtc.muted }" @click="toggleMute"><MicOff v-if="rtc.muted" :size="14" aria-hidden="true" /><Mic v-else :size="14" aria-hidden="true" /> {{ rtc.muted ? 'Mudo' : 'Microfone' }}</button>
+      <button :class="{ on: microphoneReady && !rtc.muted }" :disabled="!microphoneReady" @click="toggleMute"><MicOff v-if="!microphoneReady || rtc.muted" :size="14" aria-hidden="true" /><Mic v-else :size="14" aria-hidden="true" /> {{ !microphoneReady ? 'Microfone indisponível' : rtc.muted ? 'Mudo' : 'Microfone' }}</button>
       <button :class="{ on: !rtc.speakerMuted }" @click="toggleSpeaker"><VolumeX v-if="rtc.speakerMuted" :size="14" aria-hidden="true" /><Volume2 v-else :size="14" aria-hidden="true" /> {{ rtc.speakerMuted ? 'Sem som' : 'Alto-falante' }}</button>
       <span class="stage-controls-divider" aria-hidden="true"></span>
       <button class="icon-control" :class="{ on: rtc.video }" :aria-pressed="rtc.video" aria-label="Câmera" title="Câmera" @click="toggleVideo"><Video :size="18" aria-hidden="true" /></button>
@@ -47,7 +47,8 @@ const props = defineProps({ channel: Object });
 let localVideo = null;
 const localStream = computed(() => rtc.screen ? rtc.screenStream : rtc.video ? rtc.localStream : null);
 const members = computed(() => store.voice[props.channel.id] || []);
-const inThisChannel = computed(() => rtc.channelId === props.channel.id);
+const microphoneReady = computed(() => rtc.microphone.phase === 'ready');
+const inThisChannel = computed(() => rtc.channelId === props.channel.id && ['ready', 'error'].includes(rtc.microphone.phase));
 
 function initials(n) { return String(n || '?').slice(0, 2).toUpperCase(); }
 function nameOf(uid) {

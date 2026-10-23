@@ -16,6 +16,10 @@ mac:
   category: public.app-category.social-networking
   target: dmg
   identity: null        # ad-hoc/skip signing — configurar Developer ID para distribuição pública
+  entitlements: build/entitlements.plist
+  entitlementsInherit: build/entitlements.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: O Prosa usa o microfone para transmitir sua voz nas chamadas.
   artifactName: Prosa-${version}-${arch}.${ext}
   minimumSystemVersion: "11.0"
 

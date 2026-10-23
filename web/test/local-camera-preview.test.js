@@ -80,6 +80,7 @@ function mountStage(t, initial = {}) {
     channelId: 'room', video: false, screen: false,
     localStream: camera, screenStream: screen, remoteStreams: {}, speaking: {},
     muted: false, deafened: false, speakerMuted: false,
+    microphone: { phase: 'ready', target: { id: 'room', name: 'Room' }, error: null },
     ...initial,
   });
   const unexpectedControl = () => { throw new Error('Unexpected media/control operation'); };

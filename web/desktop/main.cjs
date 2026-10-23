@@ -1,15 +1,24 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, systemPreferences } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const store = require('./store.cjs');
 const identity = require('./identity.cjs');
 const { canUsePermission } = require('./permissions.cjs');
+const { createMicrophoneAccessHandler } = require('./microphone.cjs');
 
 // Dev: PROSA_DEV_URL=http://localhost:5173 carrega o Vite; senão, dist/ local.
 const DEV_URL = process.env.PROSA_DEV_URL || '';
 const API_URL = process.env.PROSA_API_URL || ''; // backend remoto configurável
 
 const APP_URL = DEV_URL || pathToFileURL(path.join(__dirname, '..', 'dist', 'index.html')).href;
+const appWebContents = new WeakSet();
+
+ipcMain.handle('media:ensure-microphone-access', createMicrophoneAccessHandler({
+  platform: process.platform,
+  systemPreferences,
+  appUrl: APP_URL,
+  isAppWebContents: wc => appWebContents.has(wc),
+}));
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -29,6 +38,7 @@ function createWindow() {
       spellcheck: true,
     },
   });
+  appWebContents.add(win.webContents);
 
   const permissionAllowed = (wc, permission, details) => canUsePermission(permission, {
     ...details, requestingUrl: details?.requestingUrl || wc?.getURL(),

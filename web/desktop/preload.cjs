@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('prosaDesktop', {
   // API base configurável: env PROSA_API_URL tem precedência sobre o build
   apiBase: process.env.PROSA_API_URL || '',
   appInfo: () => ipcRenderer.invoke('app:info'),
+  ensureMicrophoneAccess: () => ipcRenderer.invoke('media:ensure-microphone-access'),
   // P2P: ops tipadas — o renderer nunca acessa chave privada nem SQL.
   p2p: {
     pubkey: () => ipcRenderer.invoke('p2p:pubkey'),

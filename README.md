@@ -113,6 +113,22 @@ codesign --deep --force --sign - --entitlements build/entitlements.plist \
 npx electron-builder --prepackaged ../release/mac-universal/Prosa.app --mac dmg
 ```
 
+`mac.identity: null` desativa a assinatura automática do electron-builder.
+O arquivo `build/entitlements.plist` é configurado para o app e seus helpers
+e inclui entrada de áudio. No fluxo ad-hoc acima, a etapa manual de assinatura
+continua necessária. Confira o pacote assinado antes de distribuí-lo:
+
+```bash
+codesign --verify --deep --strict --verbose=2 ../release/mac-universal/Prosa.app
+codesign -d --entitlements :- ../release/mac-universal/Prosa.app
+plutil -extract NSMicrophoneUsageDescription raw \
+  ../release/mac-universal/Prosa.app/Contents/Info.plist
+```
+
+Confira também `com.apple.security.device.audio-input` nos executáveis
+`Prosa Helper*.app` em `Contents/Frameworks`, não apenas no app principal.
+O build do Vite sozinho não gera nem valida um aplicativo macOS assinado.
+
 Artefato: `release/Prosa-<versão>-universal.dmg` — abrir e arrastar o Prosa para Aplicativos.
 
 **Windows (.exe)**
@@ -136,6 +152,15 @@ Artefatos: `release/Prosa-<versão>-amd64.deb` e `Prosa-<versão>-arm64.deb`. In
 - `PROSA_DEV_URL` aponta o Electron ao servidor Vite em dev.
 - Segurança: `contextIsolation: true`, `nodeIntegration: false`, sandbox ativo; renderer acessa apenas `window.prosaDesktop` (preload + IPC `app:info`).
 - Ícone: `web/build/icon.icns` (logo da identidade Prosa).
+
+**Microfone e permissões**
+- No macOS empacotado, o Prosa consulta a autorização do sistema ao entrar em voz. Na primeira solicitação, aguarda a escolha antes de iniciar a captura; clicar em **Permitir** deve continuar a mesma tentativa.
+- A interface distingue autorização pendente, inicialização, negativa, dispositivo ausente e falha de captura. Consentimento concedido não garante que o dispositivo esteja disponível.
+- **Cancelar entrada** cancela a tentativa local, mas não fecha um prompt do sistema já aberto. Se a captura terminar depois do cancelamento, suas faixas são encerradas sem entrar no canal.
+- Após falha, use **Tentar novamente**. Se o acesso foi negado/restrito no macOS, confira **Ajustes do Sistema > Privacidade e Segurança > Microfone**; uma política do sistema pode impedir alterações. Após alterar uma negativa anterior, pode ser necessário encerrar e reabrir o Prosa.
+- Se a captura for interrompida durante a chamada, o microfone fica indisponível: saia da chamada e entre novamente. Silenciar o microfone não equivale a revogar a permissão.
+- No navegador, as permissões continuam sob controle do navegador; use HTTPS ou localhost. Electron dev e app empacotado podem ter identidades/permissões diferentes no macOS: valide no pacote que será usado, sem resetar permissões ou apagar perfis para testar.
+- Testes simulados e build web não comprovam consentimento nativo, captura física ou transmissão para outro participante.
 
 **Pendências para distribuição pública**
 - Assinatura Developer ID + notarização Apple (o build atual é ad-hoc: em outra máquina, `xattr -cr /Applications/Prosa.app` se o Gatekeeper reclamar).
