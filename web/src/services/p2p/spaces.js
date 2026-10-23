@@ -1,7 +1,7 @@
 // p2p/spaces.js — criação e gestão de espaços (DM 1:1, grupo, comunidade).
 // DM: espaço com exatamente 2 membros. Grupo/comunidade: genesis assinado
 // pelo criador; membros entram por convite assinado de admin (task 14).
-import { makeSpace, getSpace, listSpaces, emitEvent, spaceProjection } from './eventlog.js';
+import { makeSpace, getSpace, listSpaces, emitEvent, spaceProjection, notifyLocalEvent } from './eventlog.js';
 import { getLocalStore } from './localstore.js';
 import { p2pTransport } from './transport.js';
 import { makeSignedEnvelope } from './envelope.js';
@@ -45,6 +45,7 @@ export async function createSpace(identity, { type, name, members = [], channels
   }
   await store.kvSet(`space:${spaceId}`, { id: spaceId, type, name });
   await saveSpaceIndex(sp);
+  notifyLocalEvent(genesis); // genesis nao passa por emitEvent — espelha mailbox
   return sp;
 }
 
@@ -84,6 +85,7 @@ export async function acceptSpaceInvite(genesis, store) {
   await store.kvSet(`space:${id}`, { id, type: sp.type, name: sp.meta.name });
   for (const m of sp.members) p2pTransport.joinSpace(id, m);
   await saveSpaceIndex(sp);
+  notifyLocalEvent(genesis); // espelha mailbox para o proprio convidado
   return sp;
 }
 

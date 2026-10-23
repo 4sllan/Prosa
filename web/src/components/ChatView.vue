@@ -15,6 +15,10 @@
             <span class="author">{{ m.author.displayName }}</span>{{ fmtTime(m.createdAt) }}
             <span v-if="m.editedAt" style="font-size:11px">(editada)</span>
             <span v-if="m.pinned" class="pin-tag"><Pin :size="11" aria-hidden="true" /> fixada</span>
+            <span v-if="m.author.id === store.user.id && sendState(m.id)" class="send-state"
+                  :class="{ warn: sendState(m.id) === 'unconfirmed' }">
+              {{ sendState(m.id) === 'sending' ? 'enviando…' : 'sem confirmação' }}
+            </span>
           </div>
           <div class="msg-body" v-if="editing !== m.id">{{ m.content }}
             <template v-for="a in m.attachments" :key="a.id">
@@ -104,6 +108,7 @@ const loadingMore = ref(false);
 const messages = computed(() => store.messages[props.channel.id] || []);
 const channelLabel = computed(() => props.channel.type === 'dm' ? 'DM' : '#' + props.channel.name);
 const canModerate = computed(() => ['owner', 'admin', 'moderator'].includes(store.currentCommunity?.myRole));
+const sendState = (mid) => store.sendStates?.[mid] || null;
 const typingText = computed(() => {
   const t = store.typing[props.channel.id] || {};
   const names = Object.entries(t).filter(([, ts]) => Date.now() - ts < 5000).map(([uid]) => nameOf(uid));
