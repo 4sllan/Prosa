@@ -1,0 +1,12 @@
+{
+  "action": "published",
+  "release": {
+    "tag_name": "../evil",
+    "name": "evil",
+    "published_at": "2026-01-01T00:00:00Z",
+    "prerelease": false,
+    "draft": false,
+    "html_url": "https://example.com/evil",
+    "body": "não deve ser escrito"
+  }
+}

@@ -2,6 +2,7 @@
   "name": "prosa",
   "type": "module",
   "private": true,
+  "packageManager": "pnpm@11.18.0",
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
@@ -10,6 +11,10 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@nuxt/content": "^3.16.2",
+    "@nuxt/image": "^2.2.1",
+    "@nuxt/ui": "^4.12.0",
+    "better-sqlite3": "^13.0.3",
     "nuxt": "^4.6.3",
     "vue": "^3.5.44",
     "vue-router": "^5.4.0"
