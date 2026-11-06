@@ -1,7 +1,13 @@
 <script setup lang="ts">
-const { data: releases } = await useAsyncData('releases-list', () =>
+definePageMeta({
+  layout: 'docs'
+})
+
+const { data: pages } = await useAsyncData('releases-list', () =>
   queryCollection('releases').order('date', 'DESC').all()
 )
+
+const releases = computed(() => pages.value?.filter(page => page.tag))
 
 useSeoMeta({
   title: 'Releases — Prosa',
@@ -10,17 +16,13 @@ useSeoMeta({
 </script>
 
 <template>
-  <UContainer class="py-12">
-    <div class="space-y-8">
-      <div class="space-y-2">
-        <h1 class="text-2xl sm:text-3xl font-bold text-highlighted">
-          Releases
-        </h1>
-        <p class="text-muted">
-          Histórico de versões do Prosa.
-        </p>
-      </div>
+  <UPage>
+    <UPageHeader
+      title="Releases"
+      description="Histórico de versões do Prosa."
+    />
 
+    <UPageBody>
       <ul v-if="releases?.length" class="space-y-4">
         <li v-for="release in releases" :key="release.tag">
           <UCard>
@@ -64,6 +66,6 @@ useSeoMeta({
           Nenhuma release publicada ainda.
         </p>
       </div>
-    </div>
-  </UContainer>
+    </UPageBody>
+  </UPage>
 </template>
