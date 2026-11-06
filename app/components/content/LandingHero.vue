@@ -1,4 +1,7 @@
 <script setup lang="ts">
+const hero = useTemplateRef<HTMLElement>('hero')
+useLandingReveal(hero)
+
 const { data: releases } = await useAsyncData('landing-releases', () =>
   queryCollection('releases').order('date', 'DESC').all()
 )
@@ -12,26 +15,27 @@ const latestRelease = computed(() => releases.value?.find(release =>
 </script>
 
 <template>
-  <section class="landing-hero" aria-labelledby="landing-title">
+  <section ref="hero" class="landing-hero" aria-labelledby="landing-title">
     <div class="hero-stage">
       <div class="hero-copy">
         <NuxtLink
           v-if="latestRelease"
           :to="latestRelease.path"
           class="version-badge"
+          data-landing-reveal
         >
           <span class="version-dot" aria-hidden="true" />
           Versão {{ latestRelease.tag }} disponível
         </NuxtLink>
-        <h1 id="landing-title">
+        <h1 id="landing-title" data-landing-reveal style="--landing-reveal-delay: 60ms">
           Onde a conversa<br>
           <span>acontece.</span>
         </h1>
-        <p class="hero-description">
+        <p class="hero-description" data-landing-reveal style="--landing-reveal-delay: 120ms">
           Acompanhe cada evolução do Prosa. Melhorias contínuas para
           uma experiência de comunidade sem barreiras.
         </p>
-        <div class="hero-actions">
+        <div class="hero-actions" data-landing-reveal style="--landing-reveal-delay: 180ms">
           <DownloadButton class="hero-download" />
           <NuxtLink to="/introducao" class="hero-introduction">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -47,14 +51,14 @@ const latestRelease = computed(() => releases.value?.find(release =>
         </div>
       </div>
 
-      <div class="floating-message" aria-hidden="true">
+      <div class="floating-message" aria-hidden="true" data-landing-reveal="art" style="--landing-reveal-delay: 240ms">
         <span class="message-avatar">P</span>
         <span class="message-line" />
         <span class="message-line wide" />
         <span class="message-line short" />
       </div>
 
-      <div class="chat-preview" aria-hidden="true">
+      <div class="chat-preview" aria-hidden="true" data-landing-reveal="art" style="--landing-reveal-delay: 240ms">
         <div class="preview-toolbar">
           <div class="window-controls">
             <i /><i /><i />
@@ -184,7 +188,7 @@ h1 span { color: var(--hero-accent); }
   font-weight: 700;
   line-height: 1.4;
   text-decoration: none;
-  transition: background-color 180ms ease, box-shadow 180ms ease;
+  transition: background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
 .hero-download {
@@ -206,6 +210,14 @@ h1 span { color: var(--hero-accent); }
 
 .hero-introduction:hover { background: #ffffff12; }
 .hero-introduction svg { width: 18px; height: 18px; }
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .hero-download:hover, .hero-introduction:hover { transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-download:active, .hero-introduction:active { transform: scale(.98); }
+}
 
 .version-badge:focus-visible,
 .hero-download:focus-visible,

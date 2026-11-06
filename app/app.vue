@@ -48,7 +48,10 @@ provide('navigation', navigation)
     <NuxtLoadingIndicator />
     <NuxtRouteAnnouncer />
 
-    <AppHeader v-if="!isLanding" />
+    <AppHeader
+      :show-search="!isLanding"
+      :class="{ 'landing-header': isLanding }"
+    />
 
     <UMain>
       <NuxtLayout>
@@ -56,8 +59,7 @@ provide('navigation', navigation)
       </NuxtLayout>
     </UMain>
 
-    <LandingFooter v-if="isLanding" />
-    <AppFooter v-else />
+    <LandingFooter />
 
     <ClientOnly>
       <LazyUContentSearch
@@ -67,3 +69,16 @@ provide('navigation', navigation)
     </ClientOnly>
   </UApp>
 </template>
+
+<style scoped>
+.landing-header {
+  --ui-text: #e8dfef;
+  --ui-text-highlighted: #f5f3f7;
+  --ui-bg-elevated: #271137;
+  border-bottom-color: #a12cf126;
+  background:
+    radial-gradient(ellipse at 32% 0, #271137b3, transparent 65%),
+    #09090bf2;
+  backdrop-filter: blur(16px);
+}
+</style>

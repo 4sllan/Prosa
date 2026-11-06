@@ -32,6 +32,13 @@ site atualizado (selo da home acompanha a última release estável)
   `Landing*`, com hero, seções ilustradas e cards sobre atualizações.
   O selo usa a release estável mais recente com tag e data válidas; fica oculto
   quando não há candidata. Pré-releases não aparecem nesse selo.
+- **Animações da home** — entrada sequencial no hero e revelação de textos,
+  ilustrações e cards ao entrar na tela, uma vez por montagem. Botões respondem
+  ao hover/pressionamento; cards têm realce de hover, mas não são clicáveis.
+  Os efeitos respeitam `prefers-reduced-motion`, inclusive mudanças durante a
+  sessão, e preservam foco e conteúdo visível sem JavaScript ou observer.
+  Header, rodapé e páginas internas não recebem esses efeitos. Não há loops,
+  novas dependências nem requisições adicionais para animar.
 - **Ilustrações** — SVGs locais e originais, inspirados em `docs/home.png`;
   não são exportações do Figma. A landing mantém o visual escuro sem mudar
   a preferência de tema da documentação.
@@ -69,6 +76,7 @@ Validações locais da landing, sem instalar um runner:
 
 ```bash
 node scripts/verify-landing-hero.mjs
+node scripts/verify-landing-motion.mjs
 node scripts/verify-landing-art.mjs
 node scripts/verify-landing-assets.mjs
 node scripts/verify-landing-browser.mjs
@@ -81,6 +89,16 @@ antes de executá-lo. `PREVIEW_URL` permite outro endereço local e base path;
 As requisições externas da página são bloqueadas e a API de releases é simulada.
 Os avisos esperados do fallback Iconify são reportados separadamente; os testes
 não comprovam disponibilidade real de serviços externos.
+
+O teste de movimento cobre fallbacks, foco, revelação única, cancelamento e
+limpeza dos recursos. No navegador, a suíte também verifica rolagem, hover,
+toque emulado, movimento reduzido inicial/dinâmico e navegação entre rotas em
+360, 390, 768, 1024 e 1440 px. Capturas pausadas e emulação não substituem a
+avaliação de fluidez em tempo real ou o teste em aparelho físico.
+Na simulação sem `IntersectionObserver`, o conteúdo permanece visível, mas o
+prefetch de visibilidade existente do `NuxtLink` gera exceções de construtor.
+Somente essas exceções, nesse cenário, são reportadas separadamente; erros em
+navegação normal continuam reprovando a suíte.
 
 Para gerar o site com o mesmo prefixo usado em produção:
 

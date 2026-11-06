@@ -19,6 +19,8 @@ const downloadPath = '../app/components/content/DownloadButton.vue'
 
 async function selectRelease(records) {
   const globals = {
+    useTemplateRef: () => ref(null),
+    useLandingReveal: () => {},
     computed,
     useAsyncData: async (_key, query) => ({ data: ref(await query()) }),
     queryCollection: (collection) => {

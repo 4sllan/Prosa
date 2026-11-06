@@ -9,6 +9,7 @@ assert.ok(['127.0.0.1', 'localhost'].includes(previewURL.hostname))
 const origin = previewURL.origin
 const basePath = previewURL.pathname.replace(/\/?$/, '/')
 const pagePath = path => `${basePath}${path.replace(/^\//, '')}`
+const lowerTargets = '.landing-features [data-landing-reveal], .landing-cards [data-landing-reveal]'
 const executable = process.env.CHROME_EXECUTABLE
   || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const directory = await mkdtemp(join(tmpdir(), 'prosa-hero-browser-'))
@@ -71,6 +72,70 @@ async function navigate(path = '/') {
   await pause(300)
 }
 
+async function tabTo(selector) {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    if (await evaluate(`document.activeElement.matches(${JSON.stringify(selector)})`)) return
+  }
+  assert.fail(`Tab could not reach ${selector}`)
+}
+
+async function heroSettled() {
+  await waitFor(`(() => {
+    const elements = [...document.querySelectorAll('.landing-hero [data-landing-reveal]')]
+      .filter(el => el.getClientRects().length)
+    return elements.length > 0 && elements.every(el =>
+      getComputedStyle(el).opacity > 0
+      && !el.getAnimations().some(animation => animation.playState === 'running'))
+  })()`)
+}
+
+async function revealLowerPage(width) {
+  const count = await evaluate(`document.querySelectorAll('${lowerTargets}').length`)
+  assert.equal(count, 17, 'Twelve feature targets and five card-section targets')
+  assert.ok(await evaluate(`document.querySelector('.technology-card:last-child').dataset.revealState === 'pending'`),
+    'Below-fold cards wait for visibility')
+  for (let index = 0; index < count; index++) {
+    const target = `document.querySelectorAll('${lowerTargets}')[${index}]`
+    await evaluate(`${target}.scrollIntoView({ block: 'center', behavior: 'instant' })`)
+    await waitFor(`${target}.dataset.revealState === 'revealed'`)
+    await waitFor(`!${target}.getAnimations().some(animation => animation.playState === 'running')`)
+    assert.equal(await evaluate(`getComputedStyle(${target}).opacity`), '1')
+    assert.equal(await evaluate(`getComputedStyle(${target}).transform`), 'none')
+    assert.equal(await evaluate('document.documentElement.scrollWidth'), width)
+    if (index === 14 && width < 768) {
+      assert.ok(await evaluate(`(() => {
+        const last = document.querySelector('.technology-card:last-child')
+        return last.getBoundingClientRect().top <= innerHeight || last.dataset.revealState === 'pending'
+      })()`), 'Offscreen mobile cards do not wait for or animate with the first card')
+    }
+  }
+  const delays = await evaluate(`[...document.querySelectorAll('.technology-card')]
+    .map(el => getComputedStyle(el).animationDelay)`)
+  assert.deepEqual(delays, ['0s', '0.09s', '0.18s'])
+  assert.ok(await evaluate(`[...document.querySelectorAll('.technology-card')].every(el =>
+    el.tagName === 'ARTICLE' && !el.matches('a, button, [tabindex], [role], [onclick]')
+    && !el.querySelector('a, button, [tabindex]') && getComputedStyle(el).cursor !== 'pointer')`))
+  await evaluate(`window.__revealChanges = 0;
+    window.__revealMutation = new MutationObserver(records => { window.__revealChanges += records.length });
+    for (const el of document.querySelectorAll('${lowerTargets}')) {
+      window.__revealMutation.observe(el, { attributes: true, attributeFilter: ['data-reveal-state'] })
+    }
+    window.scrollTo(0, 0)`)
+  await pause(100)
+  await evaluate(`window.scrollTo(0, document.documentElement.scrollHeight)`)
+  await pause(100)
+  assert.equal(await evaluate('window.__revealChanges'), 0, 'Scrolling back does not rearm entries')
+  await evaluate('window.__revealMutation.disconnect()')
+  assert.ok(await evaluate(`[...document.querySelectorAll('${lowerTargets}')].every(el =>
+    el.dataset.revealState === 'revealed' && !el.getAnimations().some(animation => animation.playState === 'running'))`))
+  assert.equal(await evaluate(`window.__revealObservers.reduce((sum, targets) =>
+    sum + [...targets].filter(el => el.closest('.landing-features, .landing-cards')).length, 0)`), 0,
+    'All lower-section targets are unobserved after revealing')
+  console.log(`Scroll motion ${width}px: all 17 targets revealed once, independent cards, no overflow or interactive-card regression.`)
+}
+
 try {
   const endpoint = await new Promise((resolve, reject) => {
     let output = ''
@@ -100,7 +165,7 @@ try {
       else request?.resolve(event.result)
     }
     if (event.method === 'Runtime.exceptionThrown') {
-      consoleErrors.push(event.params.exceptionDetails.text)
+      consoleErrors.push(event.params.exceptionDetails.exception?.description || event.params.exceptionDetails.text)
     }
     if (event.method === 'Network.responseReceived'
       && event.params.response.status >= 400
@@ -141,12 +206,121 @@ try {
   await send('Runtime.enable')
   await send('Network.enable')
   await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] })
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  await send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `(() => {
+      const NativeObserver = window.IntersectionObserver
+      window.__revealObservers = []
+      window.IntersectionObserver = class extends NativeObserver {
+        constructor(...args) {
+          super(...args)
+          this.targets = new Set()
+          window.__revealObservers.push(this.targets)
+        }
+        observe(target) {
+          if (target.matches('[data-landing-reveal]')) this.targets.add(target)
+          return super.observe(target)
+        }
+        unobserve(target) { this.targets.delete(target); return super.unobserve(target) }
+        disconnect() { this.targets.clear(); return super.disconnect() }
+      }
+    })()`
+  })
 
-  for (const width of [360, 768, 1440]) {
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false
+  })
+  await navigate()
+  const motion = await evaluate(`(() => {
+    const root = document.querySelector('.landing-hero')
+    return [...root.querySelectorAll('[data-landing-reveal]')].map(el => {
+      const style = getComputedStyle(el)
+      return { state: el.dataset.revealState, duration: style.animationDuration,
+        delay: style.animationDelay, name: style.animationName }
+    })
+  })()`)
+  assert.equal(motion.length, 6)
+  assert.ok(motion.every(el => el.state === 'revealed' && el.duration === '0.6s'))
+  assert.deepEqual(motion.map(el => el.delay), ['0s', '0.06s', '0.12s', '0.18s', '0.24s', '0.24s'])
+  await evaluate(`document.querySelector('.hero-download').focus()`)
+  assert.equal(await evaluate(`document.querySelector('.hero-actions').dataset.revealState`), 'done')
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.hero-actions')).opacity`), '1')
+  await send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+  })
+  await waitFor(`[...document.querySelectorAll('[data-landing-reveal]')].every(el => el.dataset.revealState === 'done')`)
+  assert.ok(await evaluate(`[...document.querySelectorAll('[data-landing-reveal]')].every(el =>
+    getComputedStyle(el).animationName === 'none' && getComputedStyle(el).transform === 'none')`))
+  await navigate()
+  assert.ok(await evaluate(`[...document.querySelectorAll('[data-landing-reveal]')].every(el => !el.dataset.revealState)`))
+  await send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }]
+  })
+  console.log('Hero motion: sequence, focus during entry, reduced motion during entry and initial reduced preference passed.')
+
+  const noObserver = await send('Page.addScriptToEvaluateOnNewDocument', {
+    source: 'window.IntersectionObserver = undefined'
+  })
+  const fallbackErrorStart = consoleErrors.length
+  await navigate()
+  await pause(1000)
+  assert.equal(await evaluate('document.querySelectorAll("[data-landing-reveal]").length'), 23)
+  assert.ok(await evaluate(`[...document.querySelectorAll('[data-landing-reveal]')].every(el =>
+    !el.dataset.revealState && getComputedStyle(el).opacity > 0 && getComputedStyle(el).animationName === 'none')`))
+  // NuxtLink's existing visibility-prefetch observer does not guard unsupported browsers.
+  // Report only its constructor errors in this injected scenario, never in normal runs.
+  const fallbackErrors = consoleErrors.splice(fallbackErrorStart)
+  const prefetchErrors = fallbackErrors.filter(message =>
+    /^TypeError: IntersectionObserver is not a constructor\n\s+at Object\.observe \(.*\/_nuxt\//.test(message))
+  consoleErrors.push(...fallbackErrors.filter(message => !prefetchErrors.includes(message)))
+  if (prefetchErrors.length) {
+    console.log(`Unsupported-browser limitation: ${prefetchErrors.length} existing NuxtLink prefetch exceptions; hero fallback remains visible.`)
+  }
+  await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: noObserver.identifier })
+  await send('Emulation.setScriptExecutionDisabled', { value: true })
+  await navigate()
+  assert.equal(await evaluate('document.querySelectorAll("[data-landing-reveal]").length'), 23)
+  assert.ok(await evaluate(`[...document.querySelectorAll('[data-landing-reveal]')].every(el =>
+    !el.dataset.revealState && getComputedStyle(el).opacity > 0)`))
+  assert.equal(await evaluate(`document.querySelector('.hero-download').getAttribute('href')`), pagePath('/releases'))
+  assert.ok(await evaluate(`!!document.querySelector('.hero-introduction[href="${pagePath('/introducao')}"]')`))
+  await send('Emulation.setScriptExecutionDisabled', { value: false })
+  console.log('Home fallback: all 23 reveal targets remain visible without observer or JavaScript; SSR links preserved.')
+
+  await navigate()
+  assert.ok(await evaluate('window.__revealObservers.some(targets => targets.size > 0)'))
+  for (const path of ['/introducao', '/releases', '/']) {
+    await evaluate(`document.querySelector('#__nuxt').__vue_app__.config.globalProperties.$router.push('${path}')`)
+    await waitFor(`location.pathname === '${pagePath(path)}'`)
+    if (path === '/') {
+      await waitFor(`document.querySelector('.hero-actions')?.dataset.revealState === 'revealed'`)
+      await evaluate('window.scrollTo(0, 0)')
+      await heroSettled()
+      assert.ok(await evaluate(`document.querySelector('.technology-card:last-child').dataset.revealState === 'pending'`))
+    } else {
+      await waitFor(`!document.querySelector('.landing-hero')`)
+      assert.equal(await evaluate(`document.querySelectorAll('[data-landing-reveal], [data-reveal-state]').length`), 0)
+      assert.equal(await evaluate('window.__revealObservers.reduce((sum, targets) => sum + targets.size, 0)'), 0,
+        'Leaving home clears pending observers from all three components')
+    }
+    assert.equal(await evaluate(`document.querySelectorAll('header [data-landing-reveal], footer [data-landing-reveal]').length`), 0)
+  }
+  console.log('Motion navigation: normal-motion remount works; internal pages, header and footer have no reveal targets.')
+
+  for (const width of [360, 390, 768, 1024, 1440]) {
     await send('Emulation.setDeviceMetricsOverride', {
       width, height: 1000, deviceScaleFactor: 1, mobile: false
     })
     await navigate()
+    if ([390, 1024, 1440].includes(width)) {
+      await evaluate(`[...document.querySelectorAll('.landing-hero [data-landing-reveal]')]
+        .flatMap(el => el.getAnimations()).forEach(animation => { animation.pause(); animation.currentTime = 180 })`)
+      const frame = await send('Page.captureScreenshot', { format: 'png' })
+      await writeFile(join(directory, `hero-entry-${width}.png`), Buffer.from(frame.data, 'base64'))
+      await evaluate(`[...document.querySelectorAll('.landing-hero [data-landing-reveal]')]
+        .flatMap(el => el.getAnimations()).forEach(animation => animation.play())`)
+    }
+    await heroSettled()
     const layout = await evaluate(`(() => {
       const hero = document.querySelector('.landing-hero')
       const actions = [...hero.querySelectorAll('a')]
@@ -167,6 +341,7 @@ try {
     const screenshot = await send('Page.captureScreenshot', { format: 'png' })
     await writeFile(join(directory, `hero-${width}.png`), Buffer.from(screenshot.data, 'base64'))
     console.log(`Layout ${width}px: no overflow; hero links visible; screenshot captured.`)
+    await revealLowerPage(width)
     const features = await evaluate(`(() => {
       const root = document.querySelector('.landing-features')
       const bounds = root.getBoundingClientRect()
@@ -194,6 +369,8 @@ try {
       svg.width > 0 && svg.height > 0 && svg.left >= 0 && svg.right <= width
       && svg.hidden === 'true' && svg.focusable === 'false'
     ))
+    // Capture document clips from the top so the sticky header does not cover the section.
+    await evaluate('window.scrollTo(0, 0)')
     const featureScreenshot = await send('Page.captureScreenshot', {
       format: 'png', captureBeyondViewport: true,
       clip: { x: 0, y: features.top, width, height: features.height, scale: 1 }
@@ -233,6 +410,7 @@ try {
     ])
     assert.equal(lowerPage.links.length, 7)
     assert.ok(lowerPage.links.every(href => destinations.has(href)))
+    await evaluate('window.scrollTo(0, 0)')
     const lowerScreenshot = await send('Page.captureScreenshot', {
       format: 'png', captureBeyondViewport: true,
       clip: { x: 0, y: lowerPage.top, width, height: lowerPage.height, scale: 1 }
@@ -253,10 +431,9 @@ try {
   await navigate()
   await evaluate('document.activeElement?.blur()')
   for (const selector of ['.version-badge', '.hero-download', '.hero-introduction']) {
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
-    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
-    assert.ok(await evaluate(`document.activeElement.matches('${selector}')`), `Tab focus: ${selector}`)
+    await tabTo(selector)
     assert.equal(await evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'solid')
+    assert.equal(await evaluate(`getComputedStyle(document.activeElement.closest('[data-landing-reveal]')).opacity`), '1')
   }
   console.log('Keyboard: badge, download and introduction reachable with visible focus.')
   const footerLinkCount = await evaluate(`document.querySelectorAll('.landing-footer a').length`)
@@ -268,11 +445,94 @@ try {
   }
   console.log('Footer keyboard: all seven links reachable with visible focus; placeholders skipped.')
 
+  await evaluate('document.activeElement?.blur(); window.scrollTo(0, 0)')
+  const button = await evaluate(`(() => {
+    const box = document.querySelector('.hero-download').getBoundingClientRect()
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  })()`)
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...button })
+  await pause(250)
+  assert.ok(await evaluate(`(() => {
+    const matrix = new DOMMatrix(getComputedStyle(document.querySelector('.hero-download')).transform)
+    return matrix.m42 === -3
+  })()`), 'Precise-pointer hover elevates CTA')
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...button, button: 'left', clickCount: 1 })
+  await pause(250)
+  assert.ok(await evaluate(`new DOMMatrix(getComputedStyle(document.querySelector('.hero-download')).transform).m11 < 1`))
+  // Move outside before release so this feedback check never opens a download.
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 1, y: 1, button: 'left', clickCount: 1 })
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true })
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...button })
+  await pause(250)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.hero-download')).transform`), 'none')
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false })
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
+  console.log('CTA feedback: precise hover, pressing and touch without hover elevation passed; no download opened.')
+
+  await navigate()
+  await evaluate(`document.querySelector('.technology-card').scrollIntoView({ block: 'center', behavior: 'instant' })`)
+  await waitFor(`document.querySelector('.technology-card').dataset.revealState === 'revealed'`)
+  await evaluate(`document.querySelector('.technology-card').getAnimations()
+    .forEach(animation => { animation.pause(); animation.currentTime = 180 })`)
+  const card = await evaluate(`(() => {
+    const box = document.querySelector('.technology-card').getBoundingClientRect()
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  })()`)
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...card })
+  await pause(250)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.technology-card')).translate`), '0px -4px')
+  assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('.technology-card')).transform`), 'none',
+    'Hover translation composes with, rather than overwrites, the entry transform')
+  const cardEntry = await send('Page.captureScreenshot', { format: 'png' })
+  await writeFile(join(directory, 'card-entry-hover.png'), Buffer.from(cardEntry.data, 'base64'))
+  await evaluate(`document.querySelector('.technology-card').getAnimations().forEach(animation => animation.play())`)
+  await waitFor(`!document.querySelector('.technology-card').getAnimations()
+    .some(animation => animation.playState === 'running')`)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.technology-card')).transform`), 'none')
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.technology-card')).borderTopColor`), 'rgba(161, 44, 241, 0.376)')
+  const cardHover = await send('Page.captureScreenshot', { format: 'png' })
+  await writeFile(join(directory, 'card-hover.png'), Buffer.from(cardHover.data, 'base64'))
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true })
+  await pause(250)
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.technology-card')).translate`), 'none')
+  const cardTouch = await send('Page.captureScreenshot', { format: 'png' })
+  await writeFile(join(directory, 'card-touch.png'), Buffer.from(cardTouch.data, 'base64'))
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false })
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
+  console.log('Card feedback: hover elevation/border, independent entry transform and touch fallback passed.')
+
+  await navigate()
+  await evaluate(`document.querySelector('.community-visual').scrollIntoView({ block: 'center', behavior: 'instant' })`)
+  await waitFor(`document.querySelector('.community-visual').dataset.revealState === 'revealed'`)
+  await evaluate(`document.querySelector('.community-visual').getAnimations()
+    .forEach(animation => { animation.pause(); animation.currentTime = 180 })`)
   await send('Emulation.setEmulatedMedia', {
     features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
   })
+  await waitFor(`[...document.querySelectorAll('[data-landing-reveal]')].every(el => el.dataset.revealState === 'done')`)
+  assert.ok(await evaluate(`[...document.querySelectorAll('[data-landing-reveal]')].every(el =>
+    getComputedStyle(el).animationName === 'none' && getComputedStyle(el).transform === 'none')`))
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('.hero-download')).transitionDuration`), '0s')
-  console.log('Reduced motion: CTA transitions disabled.')
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.technology-card')).transitionDuration`), '0s')
+  for (const width of [390, 1024, 1440]) {
+    await send('Emulation.setDeviceMetricsOverride', {
+      width, height: 1000, deviceScaleFactor: 1, mobile: false
+    })
+    await navigate()
+    assert.ok(await evaluate(`[...document.querySelectorAll('[data-landing-reveal]')]
+      .filter(el => el.getClientRects().length).every(el =>
+        getComputedStyle(el).opacity > 0 && getComputedStyle(el).animationName === 'none')`))
+    const screenshot = await send('Page.captureScreenshot', { format: 'png' })
+    await writeFile(join(directory, `hero-reduced-${width}.png`), Buffer.from(screenshot.data, 'base64'))
+    const pageHeight = await evaluate('document.documentElement.scrollHeight')
+    const reducedPage = await send('Page.captureScreenshot', {
+      format: 'png', captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width, height: pageHeight, scale: 1 }
+    })
+    await writeFile(join(directory, `home-reduced-${width}.png`), Buffer.from(reducedPage.data, 'base64'))
+  }
+  console.log('Reduced motion: active illustration entry cancelled, all offscreen targets visible, CTA/card transitions disabled.')
 
   for (const theme of ['light', 'dark']) {
     await evaluate(`localStorage.setItem('nuxt-color-mode', '${theme}')`)
@@ -291,8 +551,9 @@ try {
       await evaluate(`document.querySelector('#__nuxt').__vue_app__.config.globalProperties.$router.push('${path}')`)
       await waitFor(`location.pathname === '${pagePath(path)}' && document.querySelector('h1') !== window.__nuxtPage`)
       assert.equal(await evaluate(`document.documentElement.classList.contains('${theme}')`), true)
-      assert.equal(await evaluate(`!!document.querySelector('header')`), path !== '/')
-      assert.equal(await evaluate(`!!document.querySelector('.landing-footer')`), path === '/')
+      assert.equal(await evaluate(`!!document.querySelector('header')`), true)
+      assert.equal(await evaluate(`!!document.querySelector('.landing-footer')`), true)
+      assert.equal(await evaluate(`!!document.querySelector('[data-landing-reveal]')`), path === '/')
       assert.equal(await evaluate(`document.querySelectorAll('footer').length`), 1)
     }
     console.log(`Theme ${theme}: hero stays dark; client navigation preserves docs chrome and preference.`)
@@ -302,7 +563,7 @@ try {
     await navigate(path)
     await waitFor(`!!document.querySelector('header img') && [...document.querySelectorAll('header img')].every(img => img.complete && img.naturalWidth > 0)`)
     assert.equal(await evaluate(`document.querySelectorAll('footer').length`), 1)
-    assert.equal(await evaluate(`!!document.querySelector('.landing-footer')`), false)
+    assert.equal(await evaluate(`!!document.querySelector('.landing-footer')`), true)
     console.log(`Deep link ${pagePath(path)}: docs chrome and header logos loaded.`)
   }
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'k', code: 'KeyK', modifiers: 4 })
@@ -346,6 +607,10 @@ try {
   if (socket?.readyState === WebSocket.OPEN) {
     const state = await evaluate(`({
       url: location.href,
+      active: document.activeElement?.tagName,
+      motion: [...document.querySelectorAll('[data-landing-reveal]')].map(el => ({
+        state: el.dataset.revealState, opacity: getComputedStyle(el).opacity
+      })),
       dialog: document.querySelector('[role="dialog"]')?.textContent,
       inputs: [...document.querySelectorAll('input')].map(el => ({ value: el.value, placeholder: el.placeholder }))
     })`).catch(() => null)

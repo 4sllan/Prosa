@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { ContentNavigationItem } from '@nuxt/content'
 
+withDefaults(defineProps<{
+  showSearch?: boolean
+}>(), {
+  showSearch: true
+})
+
 const navigation = inject<Ref<ContentNavigationItem[]>>('navigation')
 
 const { header } = useAppConfig()
@@ -12,7 +18,7 @@ const { header } = useAppConfig()
     :to="header?.to || '/'"
   >
     <UContentSearchButton
-      v-if="header?.search"
+      v-if="showSearch && header?.search"
       :collapsed="false"
       class="w-full"
     />
@@ -23,7 +29,7 @@ const { header } = useAppConfig()
 
     <template #right>
       <UContentSearchButton
-        v-if="header?.search"
+        v-if="showSearch && header?.search"
         class="lg:hidden"
       />
 

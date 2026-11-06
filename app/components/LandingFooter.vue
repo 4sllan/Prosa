@@ -85,7 +85,7 @@ const logoSrc = `${useRuntimeConfig().app.baseURL}logotipo-prosa.png`
 </template>
 
 <style scoped>
-.landing-footer { padding: 80px 32px 0; color: #a1a0ab; background: #000; }
+.landing-footer { padding: 80px 32px 0; color: #a1a0ab; background: var(--prosa-background); }
 .footer-container { max-width: 1280px; margin-inline: auto; }
 .footer-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 80px; padding-bottom: 80px; }
 .brand-link { display: inline-flex; align-items: center; gap: 9px; border-radius: 6px; color: #f5f3f7; font-size: 20px; font-weight: 700; text-decoration: none; }

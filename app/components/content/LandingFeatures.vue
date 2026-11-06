@@ -1,19 +1,24 @@
+<script setup lang="ts">
+const features = useTemplateRef<HTMLElement>('features')
+useLandingReveal(features)
+</script>
+
 <template>
-  <div class="landing-features">
+  <div ref="features" class="landing-features">
     <section class="feature-section" aria-labelledby="releases-heading">
       <div class="feature-grid">
         <div class="feature-copy">
-          <span class="feature-badge">Sempre evoluindo</span>
-          <h2 id="releases-heading">
+          <span class="feature-badge" data-landing-reveal>Sempre evoluindo</span>
+          <h2 id="releases-heading" data-landing-reveal style="--landing-reveal-delay: 60ms">
             Cada novidade do Prosa,<br>em um s&oacute; lugar
           </h2>
-          <p class="section-description">
+          <p class="section-description" data-landing-reveal style="--landing-reveal-delay: 120ms">
             Melhorias, corre&ccedil;&otilde;es e novas possibilidades para suas
             conversas. Acompanhe o que mudou no Prosa, direto da fonte e
             a cada nova vers&atilde;o.
           </p>
           <ul class="feature-list compact">
-            <li>
+            <li data-landing-reveal style="--landing-reveal-delay: 160ms">
               <span class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="m12 3 2.6 5.4 6 .9-4.3 4.2 1 5.9-5.3-2.8-5.3 2.8 1-5.9-4.3-4.2 6-.9L12 3Z" />
@@ -24,7 +29,7 @@
                 <p>Novidades e corre&ccedil;&otilde;es com todos os detalhes.</p>
               </div>
             </li>
-            <li>
+            <li data-landing-reveal style="--landing-reveal-delay: 200ms">
               <span class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="M4 5h10v4H4zM10 15h10v4H10zM7 9v8h3M17 15V7h-3" />
@@ -37,7 +42,7 @@
             </li>
           </ul>
         </div>
-        <div class="community-visual" aria-hidden="true">
+        <div class="community-visual" aria-hidden="true" data-landing-reveal="art" style="--landing-reveal-delay: 120ms">
           <LandingCommunityArt />
           <div class="activity-card">
             <span class="activity-symbol">+</span>
@@ -53,14 +58,14 @@
     <section class="feature-section workspace-section" aria-labelledby="updates-heading">
       <div class="feature-grid">
         <div class="feature-copy">
-          <h2 id="updates-heading" class="secondary-title">
+          <h2 id="updates-heading" class="secondary-title" data-landing-reveal>
             Atualizar ficou mais simples
           </h2>
-          <p class="section-description secondary-description">
+          <p class="section-description secondary-description" data-landing-reveal style="--landing-reveal-delay: 80ms">
             Tudo o que importa para acompanhar o seu Prosa.
           </p>
           <ul class="feature-list spacious">
-            <li>
+            <li data-landing-reveal style="--landing-reveal-delay: 120ms">
               <span class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="M8 5h12M8 12h12M8 19h12M3 5h.01M3 12h.01M3 19h.01" />
@@ -74,7 +79,7 @@
                 </p>
               </div>
             </li>
-            <li>
+            <li data-landing-reveal style="--landing-reveal-delay: 160ms">
               <span class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="M3 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-3H3V4Zm18 0h-6a3 3 0 0 0-3 3v14a4 4 0 0 1 4-3h5V4Z" />
@@ -88,7 +93,7 @@
                 </p>
               </div>
             </li>
-            <li>
+            <li data-landing-reveal style="--landing-reveal-delay: 200ms">
               <span class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5" />
@@ -104,7 +109,7 @@
             </li>
           </ul>
         </div>
-        <div class="workspace-visual" aria-hidden="true">
+        <div class="workspace-visual" aria-hidden="true" data-landing-reveal="art" style="--landing-reveal-delay: 120ms">
           <LandingWorkspaceArt />
         </div>
       </div>
@@ -118,7 +123,7 @@
   --feature-muted: #a1a0ab;
   overflow: clip;
   color: #f6f5f7;
-  background: #000;
+  background: var(--prosa-background);
 }
 
 .feature-section { padding: 120px 32px; }

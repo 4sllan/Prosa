@@ -1,15 +1,20 @@
+<script setup lang="ts">
+const cards = useTemplateRef<HTMLElement>('cards')
+useLandingReveal(cards)
+</script>
+
 <template>
-  <section class="landing-cards" aria-labelledby="cards-heading">
+  <section ref="cards" class="landing-cards" aria-labelledby="cards-heading">
     <div class="cards-container">
       <div class="cards-heading">
-        <h2 id="cards-heading">Tudo para acompanhar o Prosa</h2>
-        <p>
+        <h2 id="cards-heading" data-landing-reveal>Tudo para acompanhar o Prosa</h2>
+        <p data-landing-reveal style="--landing-reveal-delay: 80ms">
           Cada melhoria tem uma hist&oacute;ria. Explore as novidades,
           acompanhe as vers&otilde;es e encontre tudo direto da fonte.
         </p>
       </div>
       <div class="cards-grid">
-        <article class="technology-card">
+        <article class="technology-card" data-landing-reveal>
           <span class="card-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24">
               <path d="m14 3-9 11h7l-2 7 9-11h-7l2-7Z" />
@@ -21,7 +26,7 @@
             Novidades, melhorias e corre&ccedil;&otilde;es, sem perder nada.
           </p>
         </article>
-        <article class="technology-card">
+        <article class="technology-card" data-landing-reveal style="--landing-reveal-delay: 90ms">
           <span class="card-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24">
               <path d="M3 11a9 9 0 1 1 2.7 7.4M3 4v7h7M12 7v5l3 2" />
@@ -33,7 +38,7 @@
             compare releases e acompanhe o caminho que nos trouxe at&eacute; aqui.
           </p>
         </article>
-        <article class="technology-card">
+        <article class="technology-card" data-landing-reveal style="--landing-reveal-delay: 180ms">
           <span class="card-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24">
               <path d="M8 6h8M12 6v12m-4 0h8M5 6h.01M19 6h.01M5 18h.01M19 18h.01" />
@@ -72,6 +77,19 @@
   border: 1px solid #ffffff12;
   border-radius: 24px;
   background: linear-gradient(145deg, #0c0b0e, #090909 70%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .technology-card { transition: translate 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .technology-card:hover { border-color: #a12cf160; box-shadow: 0 12px 30px #a12cf10c; }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  /* Keep hover translation independent of the entry animation's transform. */
+  .technology-card:hover { translate: 0 -4px; }
 }
 
 .card-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 16px; color: #ad3bfa; background: #a12cf112; }

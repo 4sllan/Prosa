@@ -13,8 +13,16 @@ for (const name of ['LandingFeatures', 'LandingCommunityArt', 'LandingWorkspaceA
     source: descriptor.template.content, filename: url.pathname, id: name
   })
   assert.deepEqual(template.errors, [], `${name}: template compilation`)
-  assert.ok(!descriptor.script && !descriptor.scriptSetup, `${name}: static presentation`)
-  const markup = source.replaceAll('http://www.w3.org/2000/svg', '')
+  assert.ok(!descriptor.script, `${name}: no extra script block`)
+  if (name.endsWith('Art')) {
+    assert.ok(!descriptor.scriptSetup, `${name}: static SVG presentation`)
+  } else {
+    assert.ok(descriptor.scriptSetup, `${name}: reveal setup`)
+    assert.match(descriptor.scriptSetup.content, /useLandingReveal\(/)
+    assert.ok(!/https?:\/\/|\$fetch|fetch\s*\(/.test(descriptor.scriptSetup.content), `${name}: no new requests`)
+  }
+  const markup = [descriptor.template.content, ...descriptor.styles.map(style => style.content)]
+    .join('\n').replaceAll('http://www.w3.org/2000/svg', '')
   assert.ok(!/https?:\/\/|<script\b|<foreignObject|<image\b/i.test(markup), `${name}: local-only artwork`)
   for (const [, id] of source.matchAll(/\bid="([^"]+)"/g)) {
     assert.ok(!ids.has(id), `Duplicate SVG or heading ID: ${id}`)

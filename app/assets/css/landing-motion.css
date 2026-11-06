@@ -1,0 +1,22 @@
+@keyframes prosa-landing-enter {
+  from { opacity: 0; transform: translateY(18px); }
+}
+
+@keyframes prosa-landing-art-enter {
+  from { opacity: 0; transform: scale(.98); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-landing-reveal][data-reveal-state="pending"] {
+    opacity: 0;
+  }
+
+  [data-landing-reveal][data-reveal-state="revealed"] {
+    animation: prosa-landing-enter 600ms cubic-bezier(.22, 1, .36, 1) backwards;
+    animation-delay: var(--landing-reveal-delay, 0ms);
+  }
+
+  [data-landing-reveal="art"][data-reveal-state="revealed"] {
+    animation-name: prosa-landing-art-enter;
+  }
+}

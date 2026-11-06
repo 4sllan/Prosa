@@ -10,4 +10,25 @@
 
 :root {
   --ui-container: var(--container-8xl);
+  --prosa-background: #000;
+}
+
+:root,
+.light,
+.dark {
+  --ui-bg: var(--prosa-background);
+  --ui-bg-muted: #09090b;
+  --ui-bg-elevated: #1b191e;
+  --ui-bg-accented: #27242c;
+  --ui-bg-inverted: #f6f5f7;
+  --ui-text-dimmed: #8c8995;
+  --ui-text-muted: #a1a0ab;
+  --ui-text-toned: #d4cfdb;
+  --ui-text: #e8dfef;
+  --ui-text-highlighted: #f6f5f7;
+  --ui-text-inverted: #09090b;
+  --ui-border: #ffffff1c;
+  --ui-border-muted: #ffffff12;
+  --ui-border-accented: #ffffff30;
+  --ui-border-inverted: #f6f5f7;
 }
