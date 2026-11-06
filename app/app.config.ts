@@ -18,6 +18,11 @@ export default defineAppConfig({
   },
   header: {
     title: siteName,
+    logo: {
+      light: '/logotipo-prosa.png',
+      dark: '/logotipo-prosa.png',
+      alt: 'Prosa'
+    },
     to: '/',
     search: true,
     colorMode: true,

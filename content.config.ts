@@ -6,6 +6,10 @@ export default defineContentConfig({
       type: 'page',
       source: 'index.md'
     }),
+    docs: defineCollection({
+      type: 'page',
+      source: [{ include: '*.md', exclude: ['index.md'] }]
+    }),
     releases: defineCollection({
       type: 'page',
       source: 'releases/**',

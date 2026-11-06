@@ -1,9 +1,21 @@
 <script setup lang="ts">
 const { seo } = useAppConfig()
 
-const { data: navigation } = await useAsyncData('navigation', () => queryCollectionNavigation('releases'))
+const { data: navigation } = await useAsyncData('navigation', async () => {
+  const [docs, releases] = await Promise.all([
+    queryCollectionNavigation('docs'),
+    queryCollectionNavigation('releases')
+  ])
+  return [...docs, ...releases]
+})
 const { data: files } = useLazyAsyncData(
-  'search', () => queryCollectionSearchSections('releases'),
+  'search', async () => {
+    const [docs, releases] = await Promise.all([
+      queryCollectionSearchSections('docs'),
+      queryCollectionSearchSections('releases')
+    ])
+    return [...docs, ...releases]
+  },
   { server: false }
 )
 

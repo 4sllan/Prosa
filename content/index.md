@@ -17,25 +17,18 @@ Notas de versão do [Prosa]{.text-primary}.
 Tudo o que muda no Prosa, direto da fonte — melhorias, correções e novidades de cada release, sempre atualizado.
 
 #links
-  :::u-button
-  ---
-  to: /releases
-  size: xl
-  trailing-icon: i-lucide-arrow-right
-  ---
-  Ver releases
+  :::download-button
   :::
 
   :::u-button
   ---
-  icon: i-simple-icons-github
+  icon: i-lucide-book-open
   color: neutral
   variant: outline
   size: xl
-  to: https://github.com/4sllan/Prosa
-  target: _blank
+  to: /introducao
   ---
-  GitHub
+  Introdução
   :::
 
 
