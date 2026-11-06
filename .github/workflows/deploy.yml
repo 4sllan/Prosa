@@ -1,8 +1,14 @@
+
 name: Deploy — GitHub Pages
 
 on:
   push:
     branches: [main]
+
+  workflow_run:
+    workflows: ["Conteúdo de release"]
+    types: [completed]
+
   workflow_dispatch:
 
 permissions:
@@ -19,33 +25,50 @@ env:
 
 jobs:
   build:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout do código atualizado
+        uses: actions/checkout@v5
+        with:
+          ref: main
 
-      - uses: pnpm/action-setup@v4
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
 
-      - uses: actions/setup-node@v5
+      - name: Configurar Node.js
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
 
-      - run: pnpm generate
+      - name: Gerar site
+        run: pnpm generate
 
-      - uses: actions/configure-pages@v5
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
 
-      - uses: actions/upload-pages-artifact@v4
+      - name: Preparar artefato
+        uses: actions/upload-pages-artifact@v4
         with:
           path: .output/public
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - id: deployment
+      - name: Publicar no GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
