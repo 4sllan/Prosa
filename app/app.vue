@@ -1,5 +1,8 @@
 <script setup lang="ts">
 const { seo } = useAppConfig()
+const baseURL = useRuntimeConfig().app.baseURL
+const route = useRoute()
+const isLanding = computed(() => route.path === '/')
 
 const { data: navigation } = await useAsyncData('navigation', async () => {
   const [docs, releases] = await Promise.all([
@@ -24,7 +27,7 @@ useHead({
     { name: 'viewport', content: 'width=device-width, initial-scale=1' }
   ],
   link: [
-    { rel: 'icon', href: '/favicon.ico' }
+    { rel: 'icon', href: `${baseURL}favicon.ico` }
   ],
   htmlAttrs: {
     lang: 'pt-BR'
@@ -45,7 +48,7 @@ provide('navigation', navigation)
     <NuxtLoadingIndicator />
     <NuxtRouteAnnouncer />
 
-    <AppHeader />
+    <AppHeader v-if="!isLanding" />
 
     <UMain>
       <NuxtLayout>
@@ -53,7 +56,8 @@ provide('navigation', navigation)
       </NuxtLayout>
     </UMain>
 
-    <AppFooter />
+    <LandingFooter v-if="isLanding" />
+    <AppFooter v-else />
 
     <ClientOnly>
       <LazyUContentSearch

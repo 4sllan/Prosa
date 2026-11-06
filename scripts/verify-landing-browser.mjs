@@ -1,0 +1,359 @@
+import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const previewURL = new URL(process.env.PREVIEW_URL || 'http://127.0.0.1:3100')
+assert.ok(['127.0.0.1', 'localhost'].includes(previewURL.hostname))
+const origin = previewURL.origin
+const basePath = previewURL.pathname.replace(/\/?$/, '/')
+const pagePath = path => `${basePath}${path.replace(/^\//, '')}`
+const executable = process.env.CHROME_EXECUTABLE
+  || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const directory = await mkdtemp(join(tmpdir(), 'prosa-hero-browser-'))
+console.log(`Browser artifacts: ${directory}`)
+const browser = spawn(executable, [
+  '--headless=new', '--no-first-run', '--no-default-browser-check',
+  '--disable-background-networking', '--disable-component-update',
+  '--disable-sync', '--disable-default-apps', '--remote-debugging-port=0',
+  `--user-data-dir=${join(directory, 'profile')}`, 'about:blank'
+], { stdio: ['ignore', 'ignore', 'pipe'] })
+
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
+let socket
+let sequence = 0
+const pending = new Map()
+const consoleErrors = []
+const resourceFailures = []
+let apiMode = 'success'
+const assets = [
+  { name: 'Prosa.dmg', browser_download_url: 'https://example.invalid/mac' },
+  { name: 'Prosa.exe', browser_download_url: 'https://example.invalid/windows' },
+  { name: 'Prosa.AppImage', browser_download_url: 'https://example.invalid/linux' }
+]
+
+function send(method, params = {}) {
+  const id = ++sequence
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pending.delete(id)
+      reject(new Error(`CDP timeout: ${method}`))
+    }, 15000)
+    pending.set(id, {
+      resolve: result => { clearTimeout(timer); resolve(result) },
+      reject: error => { clearTimeout(timer); reject(error) }
+    })
+    socket.send(JSON.stringify({ id, method, params }))
+  })
+}
+
+async function evaluate(expression) {
+  const result = await send('Runtime.evaluate', {
+    expression, returnByValue: true, awaitPromise: true
+  })
+  assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails))
+  return result.result.value
+}
+
+async function waitFor(expression) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await evaluate(expression)) return
+    await pause(100)
+  }
+  throw new Error(`Condition not reached: ${expression}`)
+}
+
+async function navigate(path = '/') {
+  await send('Page.navigate', { url: `${origin}${pagePath(path)}` })
+  await waitFor('document.readyState === "complete" && !!document.querySelector("h1")')
+  await evaluate('window.scrollTo(0, 0)')
+  await pause(300)
+}
+
+try {
+  const endpoint = await new Promise((resolve, reject) => {
+    let output = ''
+    const timer = setTimeout(() => reject(new Error('Chrome startup timeout')), 15000)
+    browser.once('error', error => { clearTimeout(timer); reject(error) })
+    browser.stderr.on('data', data => {
+      output += data
+      const match = output.match(/DevTools listening on (ws:\/\/[^\s]+)/)
+      if (match) { clearTimeout(timer); resolve(match[1]) }
+    })
+  })
+  const address = new URL(endpoint)
+  const targets = await (await fetch(`http://${address.host}/json/list`)).json()
+  const target = targets.find(item => item.type === 'page')
+  assert.ok(target, 'Chrome page target available')
+  socket = new WebSocket(target.webSocketDebuggerUrl)
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true })
+    socket.addEventListener('error', reject, { once: true })
+  })
+  socket.addEventListener('message', async ({ data }) => {
+    const event = JSON.parse(data)
+    if (event.id) {
+      const request = pending.get(event.id)
+      pending.delete(event.id)
+      if (event.error) request?.reject(new Error(event.error.message))
+      else request?.resolve(event.result)
+    }
+    if (event.method === 'Runtime.exceptionThrown') {
+      consoleErrors.push(event.params.exceptionDetails.text)
+    }
+    if (event.method === 'Network.responseReceived'
+      && event.params.response.status >= 400
+      && ['Script', 'Stylesheet', 'Image', 'Font'].includes(event.params.type)) {
+      resourceFailures.push(`${event.params.response.status}: ${event.params.response.url}`)
+    }
+    if (event.method === 'Runtime.consoleAPICalled'
+      && ['error', 'warning'].includes(event.params.type)) {
+      consoleErrors.push(event.params.args.map(arg => arg.value || arg.description).join(' '))
+    }
+    if (event.method === 'Fetch.requestPaused') {
+      const { requestId, request } = event.params
+      try {
+        if (request.url === 'https://api.github.com/repos/4sllan/Prosa/releases/latest') {
+          if (apiMode === 'failure') {
+            await send('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' })
+          } else {
+            await send('Fetch.fulfillRequest', {
+              requestId, responseCode: 200,
+              responseHeaders: [
+                { name: 'Content-Type', value: 'application/json' },
+                { name: 'Access-Control-Allow-Origin', value: '*' }
+              ],
+              body: Buffer.from(JSON.stringify({ assets: apiMode === 'empty' ? [] : assets })).toString('base64')
+            })
+          }
+        } else if (request.url.startsWith(`${origin}/`)) {
+          await send('Fetch.continueRequest', { requestId })
+        } else {
+          await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' })
+        }
+      } catch (error) {
+        consoleErrors.push(`Interception: ${error.message}`)
+      }
+    }
+  })
+  await send('Page.enable')
+  await send('Runtime.enable')
+  await send('Network.enable')
+  await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] })
+
+  for (const width of [360, 768, 1440]) {
+    await send('Emulation.setDeviceMetricsOverride', {
+      width, height: 1000, deviceScaleFactor: 1, mobile: false
+    })
+    await navigate()
+    const layout = await evaluate(`(() => {
+      const hero = document.querySelector('.landing-hero')
+      const actions = [...hero.querySelectorAll('a')]
+      return {
+        width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
+        h1: document.querySelectorAll('h1').length,
+        background: getComputedStyle(hero).backgroundColor,
+        actions: actions.map(a => {
+          const r = a.getBoundingClientRect()
+          return { text: a.textContent.trim(), left: r.left, right: r.right, height: r.height }
+        })
+      }
+    })()`)
+    assert.equal(layout.scrollWidth, width, `No horizontal overflow at ${width}`)
+    assert.equal(layout.h1, 1)
+    assert.equal(layout.background, 'rgb(0, 0, 0)')
+    assert.ok(layout.actions.every(a => a.left >= 0 && a.right <= width && a.height >= 30))
+    const screenshot = await send('Page.captureScreenshot', { format: 'png' })
+    await writeFile(join(directory, `hero-${width}.png`), Buffer.from(screenshot.data, 'base64'))
+    console.log(`Layout ${width}px: no overflow; hero links visible; screenshot captured.`)
+    const features = await evaluate(`(() => {
+      const root = document.querySelector('.landing-features')
+      const bounds = root.getBoundingClientRect()
+      return {
+        top: bounds.top + scrollY, height: bounds.height,
+        sections: root.querySelectorAll('section').length,
+        headings: [...root.querySelectorAll('h2')].map(h => h.id),
+        items: root.querySelectorAll('li').length,
+        background: getComputedStyle(root).backgroundColor,
+        artwork: [...root.querySelectorAll('.community-visual > svg, .workspace-visual > svg')].map(svg => {
+          const box = svg.getBoundingClientRect()
+          return {
+            width: box.width, height: box.height, left: box.left, right: box.right,
+            hidden: svg.getAttribute('aria-hidden'), focusable: svg.getAttribute('focusable')
+          }
+        })
+      }
+    })()`)
+    assert.equal(features.sections, 2)
+    assert.deepEqual(features.headings, ['releases-heading', 'updates-heading'])
+    assert.equal(features.items, 5)
+    assert.equal(features.background, 'rgb(0, 0, 0)')
+    assert.equal(features.artwork.length, 2)
+    assert.ok(features.artwork.every(svg =>
+      svg.width > 0 && svg.height > 0 && svg.left >= 0 && svg.right <= width
+      && svg.hidden === 'true' && svg.focusable === 'false'
+    ))
+    const featureScreenshot = await send('Page.captureScreenshot', {
+      format: 'png', captureBeyondViewport: true,
+      clip: { x: 0, y: features.top, width, height: features.height, scale: 1 }
+    })
+    await writeFile(join(directory, `features-${width}.png`), Buffer.from(featureScreenshot.data, 'base64'))
+    console.log(`Features ${width}px: two sections, five items, decorative SVGs in bounds; screenshot captured.`)
+    await evaluate(`document.querySelector('.brand-link img').scrollIntoView()`)
+    await waitFor(`document.querySelector('.brand-link img').complete && document.querySelector('.brand-link img').naturalWidth > 0`)
+    const lowerPage = await evaluate(`(() => {
+      const cards = document.querySelector('.landing-cards')
+      const footer = document.querySelector('.landing-footer')
+      const top = cards.getBoundingClientRect().top + scrollY
+      return {
+        top, height: footer.getBoundingClientRect().bottom + scrollY - top,
+        cards: cards.querySelectorAll('article').length,
+        background: [cards, footer].map(el => getComputedStyle(el).backgroundColor),
+        footers: document.querySelectorAll('footer').length,
+        oldCTA: document.body.textContent.includes('Pronto para se atualizar?'),
+        logo: document.querySelector('.brand-link img').getAttribute('src'),
+        links: [...footer.querySelectorAll('a')].map(a => a.getAttribute('href')),
+        pending: [...footer.querySelectorAll('.footer-pending, .social-pending')].map(el => ({
+          interactive: !!el.closest('a, button, [tabindex]'),
+          announced: /em breve/i.test(el.textContent + el.getAttribute('aria-label'))
+        }))
+      }
+    })()`)
+    assert.equal(lowerPage.cards, 3)
+    assert.equal(lowerPage.footers, 1)
+    assert.equal(lowerPage.oldCTA, false)
+    assert.deepEqual(lowerPage.background, ['rgb(0, 0, 0)', 'rgb(0, 0, 0)'])
+    assert.equal(lowerPage.logo, pagePath('/logotipo-prosa.png'))
+    assert.equal(lowerPage.pending.length, 8)
+    assert.ok(lowerPage.pending.every(item => !item.interactive && item.announced))
+    const destinations = new Set([
+      ...['/', '/releases', '/download', '/introducao'].map(pagePath),
+      'https://github.com/4sllan/Prosa', 'https://github.com/4sllan/Prosa/issues'
+    ])
+    assert.equal(lowerPage.links.length, 7)
+    assert.ok(lowerPage.links.every(href => destinations.has(href)))
+    const lowerScreenshot = await send('Page.captureScreenshot', {
+      format: 'png', captureBeyondViewport: true,
+      clip: { x: 0, y: lowerPage.top, width, height: lowerPage.height, scale: 1 }
+    })
+    await writeFile(join(directory, `cards-footer-${width}.png`), Buffer.from(lowerScreenshot.data, 'base64'))
+    console.log(`Cards/footer ${width}px: three cards, one footer, logo loaded, seven valid links; placeholders non-interactive.`)
+    assert.equal(await evaluate(`document.querySelector('link[rel="icon"]').getAttribute('href')`), pagePath('/favicon.ico'))
+    if (width === 1440) {
+      const height = await evaluate('document.documentElement.scrollHeight')
+      const fullScreenshot = await send('Page.captureScreenshot', {
+        format: 'png', captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width, height, scale: 1 }
+      })
+      await writeFile(join(directory, 'home-full-1440.png'), Buffer.from(fullScreenshot.data, 'base64'))
+    }
+  }
+
+  await navigate()
+  await evaluate('document.activeElement?.blur()')
+  for (const selector of ['.version-badge', '.hero-download', '.hero-introduction']) {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    assert.ok(await evaluate(`document.activeElement.matches('${selector}')`), `Tab focus: ${selector}`)
+    assert.equal(await evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'solid')
+  }
+  console.log('Keyboard: badge, download and introduction reachable with visible focus.')
+  const footerLinkCount = await evaluate(`document.querySelectorAll('.landing-footer a').length`)
+  for (let index = 0; index < footerLinkCount; index++) {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    assert.ok(await evaluate(`document.activeElement === document.querySelectorAll('.landing-footer a')[${index}]`))
+    assert.equal(await evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'solid')
+  }
+  console.log('Footer keyboard: all seven links reachable with visible focus; placeholders skipped.')
+
+  await send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+  })
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.hero-download')).transitionDuration`), '0s')
+  console.log('Reduced motion: CTA transitions disabled.')
+
+  for (const theme of ['light', 'dark']) {
+    await evaluate(`localStorage.setItem('nuxt-color-mode', '${theme}')`)
+    await navigate()
+    await waitFor(`document.documentElement.classList.contains('${theme}')`)
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.landing-hero')).backgroundColor`), 'rgb(0, 0, 0)')
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.landing-features')).backgroundColor`), 'rgb(0, 0, 0)')
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.landing-cards')).backgroundColor`), 'rgb(0, 0, 0)')
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('.landing-footer')).backgroundColor`), 'rgb(0, 0, 0)')
+    await evaluate(`document.querySelector('.hero-introduction').click()`)
+    await waitFor(`location.pathname === '${pagePath('/introducao')}' && !!document.querySelector('header')`)
+    assert.equal(await evaluate(`document.documentElement.classList.contains('${theme}')`), true)
+    for (const path of ['/download', '/releases', '/']) {
+      await evaluate(`window.__nuxtPage = document.querySelector('h1');`)
+      // Nuxt's own router exercises client navigation, not full-page reloads.
+      await evaluate(`document.querySelector('#__nuxt').__vue_app__.config.globalProperties.$router.push('${path}')`)
+      await waitFor(`location.pathname === '${pagePath(path)}' && document.querySelector('h1') !== window.__nuxtPage`)
+      assert.equal(await evaluate(`document.documentElement.classList.contains('${theme}')`), true)
+      assert.equal(await evaluate(`!!document.querySelector('header')`), path !== '/')
+      assert.equal(await evaluate(`!!document.querySelector('.landing-footer')`), path === '/')
+      assert.equal(await evaluate(`document.querySelectorAll('footer').length`), 1)
+    }
+    console.log(`Theme ${theme}: hero stays dark; client navigation preserves docs chrome and preference.`)
+  }
+
+  for (const path of ['/introducao', '/download', '/releases', '/releases/v0-6-0']) {
+    await navigate(path)
+    await waitFor(`!!document.querySelector('header img') && [...document.querySelectorAll('header img')].every(img => img.complete && img.naturalWidth > 0)`)
+    assert.equal(await evaluate(`document.querySelectorAll('footer').length`), 1)
+    assert.equal(await evaluate(`!!document.querySelector('.landing-footer')`), false)
+    console.log(`Deep link ${pagePath(path)}: docs chrome and header logos loaded.`)
+  }
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'k', code: 'KeyK', modifiers: 4 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'k', code: 'KeyK', modifiers: 4 })
+  await waitFor(`!!document.querySelector('[role="dialog"] input')`)
+  await evaluate(`document.querySelector('[role="dialog"] input').focus()`)
+  await send('Input.insertText', { text: 'v0.6.0' })
+  await waitFor(`/v0\\.6\\.0/i.test(document.querySelector('[role="dialog"]').textContent)`)
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' })
+  console.log('Docs search: opens, accepts query and returns the existing v0.6.0 release.')
+
+  for (const scenario of [
+    { ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X)', suffix: 'mac', label: 'macOS' },
+    { ua: 'Mozilla/5.0 (Windows NT 10.0)', suffix: 'windows', label: 'Windows' },
+    { ua: 'Mozilla/5.0 (X11; Linux x86_64)', suffix: 'linux', label: 'Linux' },
+    { ua: 'Unknown', path: pagePath('/releases'), label: 'Ver releases' },
+    { ua: 'Macintosh', mode: 'failure', path: 'https://github.com/4sllan/Prosa/releases/latest', label: 'macOS' },
+    { ua: 'Windows NT', mode: 'empty', path: 'https://github.com/4sllan/Prosa/releases/latest', label: 'Windows' }
+  ]) {
+    apiMode = scenario.mode || 'success'
+    await send('Network.setUserAgentOverride', { userAgent: scenario.ua })
+    await navigate()
+    const href = scenario.path || `https://example.invalid/${scenario.suffix}`
+    await waitFor(`document.querySelector('.hero-download')?.getAttribute('href') === ${JSON.stringify(href)}`)
+    assert.ok((await evaluate(`document.querySelector('.hero-download').textContent`)).includes(scenario.label))
+  }
+  console.log('Mounted download: 6 scenarios passed with intercepted API; no installer opened.')
+  // The existing Iconify fallback is intentionally unavailable in this offline run.
+  const offlineIconWarnings = consoleErrors.filter(message =>
+    /^\[Icon\] failed to load icon `[a-z-]+:[a-z-]+`$/.test(message)
+  )
+  const unexpectedErrors = consoleErrors.filter(message => !offlineIconWarnings.includes(message))
+  if (offlineIconWarnings.length) {
+    console.log(`Offline limitation: ${offlineIconWarnings.length} existing Iconify load warnings (${new Set(offlineIconWarnings).size} unique icons).`)
+  }
+  assert.deepEqual(unexpectedErrors, [], 'No unexpected console warnings, hydration errors or uncaught exceptions')
+  assert.deepEqual(resourceFailures, [], 'No broken local scripts, styles, images or fonts')
+  console.log(`Browser checks passed. Screenshots: ${directory}`)
+} catch (error) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    const state = await evaluate(`({
+      url: location.href,
+      dialog: document.querySelector('[role="dialog"]')?.textContent,
+      inputs: [...document.querySelectorAll('input')].map(el => ({ value: el.value, placeholder: el.placeholder }))
+    })`).catch(() => null)
+    await writeFile(join(directory, 'failure.json'), JSON.stringify({ state, consoleErrors, resourceFailures }, null, 2))
+    console.error('Failure state:', JSON.stringify(state))
+  }
+  throw error
+} finally {
+  socket?.close()
+  browser.kill('SIGTERM')
+}
