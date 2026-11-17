@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const { t } = useI18n()
 const { footer } = useAppConfig()
 </script>
 
@@ -15,7 +16,7 @@ const { footer } = useAppConfig()
         <UButton
           v-for="(link, index) of footer?.links"
           :key="index"
-          v-bind="{ color: 'neutral', variant: 'ghost', ...link }"
+          v-bind="{ color: 'neutral', variant: 'ghost', ...link, 'aria-label': link['aria-label'] ? t(link['aria-label']) : undefined }"
         />
       </template>
     </template>

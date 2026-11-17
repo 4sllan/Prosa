@@ -43,31 +43,31 @@ export default defineAppConfig({
         'icon': 'i-simple-icons-github',
         'to': 'https://github.com/4sllan/Prosa',
         'target': '_blank',
-        'aria-label': 'Prosa no GitHub'
+        'aria-label': 'footer.githubLabel'
       },
     ]
   },
   toc: {
-    title: 'Nesta versão',
+    title: 'releases.inThisVersion',
     bottom: {
-      title: 'Prosa no GitHub',
+      title: 'docs.githubTitle',
       edit: true,
       links: [
         {
           icon: 'i-lucide-star',
-          label: 'Star on GitHub',
+          label: 'docs.links.star',
           to: 'https://github.com/4sllan/Prosa',
           target: '_blank'
         },
         {
           icon: 'i-lucide-git-pull-request-create',
-          label: 'Reportar problema',
+          label: 'docs.links.report',
           to: 'https://github.com/4sllan/Prosa/issues/new',
           target: '_blank'
         },
         {
           icon: 'i-simple-icons-github',
-          label: 'Apoiar o projeto',
+          label: 'docs.links.sponsor',
           to: 'https://github.com/sponsors/4sllan',
           target: '_blank'
         }

@@ -1,0 +1,102 @@
+{
+  "landing": {
+    "hero": {
+      "badge": "Versão {tag} disponível",
+      "titleLine": "Onde a conversa",
+      "titleAccent": "acontece.",
+      "description": "Acompanhe cada evolução do Prosa. Melhorias contínuas para uma experiência de comunidade sem barreiras.",
+      "intro": "Introdução"
+    },
+    "features": {
+      "badge": "Sempre evoluindo",
+      "titleA": "Cada novidade do Prosa,",
+      "titleB": "em um só lugar",
+      "description": "Melhorias, correções e novas possibilidades para suas conversas. Acompanhe o que mudou no Prosa, direto da fonte e a cada nova versão.",
+      "item1Title": "Uma página por versão",
+      "item1Text": "Novidades e correções com todos os detalhes.",
+      "item2Title": "Todo o histórico, conectado",
+      "item2Text": "Compare versões e acompanhe a evolução.",
+      "activityTop": "A cada nova versão",
+      "activityBottom": "Mais uma boa novidade",
+      "updatesTitle": "Atualizar ficou mais simples",
+      "updatesDescription": "Tudo o que importa para acompanhar o seu Prosa.",
+      "updates1Title": "Notas organizadas",
+      "updates1Text": "Melhorias, correções e contribuidores. Cada mudança no seu devido lugar.",
+      "updates2Title": "Documentação sempre à mão",
+      "updates2Text": "Encontre a introdução, navegue pelas versões e conheça cada atualização.",
+      "updates3Title": "Downloads direto da fonte",
+      "updates3Text": "Acesse os instaladores disponíveis para macOS, Windows e Linux nas releases oficiais."
+    },
+    "cards": {
+      "title": "Tudo para acompanhar o Prosa",
+      "description": "Cada melhoria tem uma história. Explore as novidades, acompanhe as versões e encontre tudo direto da fonte.",
+      "card1Title": "Sempre atualizado",
+      "card1Text": "As notas chegam a cada release publicada no GitHub. Novidades, melhorias e correções, sem perder nada.",
+      "card2Title": "Histórico completo",
+      "card2Text": "Uma página para cada versão. Consulte as mudanças, compare releases e acompanhe o caminho que nos trouxe até aqui.",
+      "card3Title": "Direto da fonte",
+      "card3Text": "Acesse a release oficial no GitHub, com as notas, os instaladores disponíveis e todos os detalhes da atualização."
+    }
+  },
+  "footer": {
+    "homeLabel": "Prosa - Página inicial",
+    "tagline": "Cada conversa, uma nova possibilidade. Acompanhe as novidades, conheça as versões e faça parte da evolução do Prosa.",
+    "githubLabel": "Prosa no GitHub (abre em nova aba)",
+    "socialX": "X: em breve",
+    "socialLinkedin": "LinkedIn: em breve",
+    "comingSoon": "Em breve",
+    "platform": "Plataforma",
+    "features": "Recursos",
+    "security": "Segurança",
+    "pricing": "Preços",
+    "download": "Download",
+    "resources": "Recursos",
+    "docs": "Documentação",
+    "blog": "Blog",
+    "releaseNotes": "Notas de versão",
+    "support": "Suporte",
+    "newTab": "(abre em nova aba)",
+    "legal": "Legal",
+    "privacy": "Privacidade",
+    "terms": "Termos",
+    "cookies": "Cookies",
+    "rights": "Todos os direitos reservados.",
+    "madeWith": "Feito com paixão por boas conversas."
+  },
+  "downloads": {
+    "for": {
+      "mac": "Baixar para macOS",
+      "windows": "Baixar para Windows",
+      "linux": "Baixar para Linux"
+    },
+    "viewReleases": "Ver releases",
+    "latestVersion": "versão mais recente",
+    "download": "Baixar",
+    "viewOnGithub": "Ver downloads no GitHub"
+  },
+  "releases": {
+    "pageTitle": "Releases",
+    "pageDescription": "Histórico de versões do Prosa.",
+    "prerelease": "Pré-release",
+    "empty": "Nenhuma release publicada ainda.",
+    "viewOnGithub": "Ver no GitHub",
+    "editOnGithub": "Editar no GitHub",
+    "publishedAt": "Publicada em {date}",
+    "seoNotes": "Notas da versão {tag} do Prosa.",
+    "notFound": "Release não encontrada",
+    "inThisVersion": "Nesta versão"
+  },
+  "docs": {
+    "notFound": "Página não encontrada",
+    "onThisPage": "Nesta página",
+    "githubTitle": "Prosa no GitHub",
+    "links": {
+      "star": "Star on GitHub",
+      "report": "Reportar problema",
+      "sponsor": "Apoiar o projeto"
+    }
+  },
+  "locales": {
+    "label": "Idioma"
+  }
+}

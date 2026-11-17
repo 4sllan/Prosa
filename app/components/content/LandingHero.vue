@@ -1,4 +1,7 @@
 <script setup lang="ts">
+const { t } = useI18n()
+const localePath = useLocalePath()
+
 const hero = useTemplateRef<HTMLElement>('hero')
 useLandingReveal(hero)
 
@@ -20,24 +23,23 @@ const latestRelease = computed(() => releases.value?.find(release =>
       <div class="hero-copy">
         <NuxtLink
           v-if="latestRelease"
-          :to="latestRelease.path"
+          :to="localePath(latestRelease.path)"
           class="version-badge"
           data-landing-reveal
         >
           <span class="version-dot" aria-hidden="true" />
-          Versão {{ latestRelease.tag }} disponível
+          {{ t('landing.hero.badge', { tag: latestRelease.tag }) }}
         </NuxtLink>
         <h1 id="landing-title" data-landing-reveal style="--landing-reveal-delay: 60ms">
-          Onde a conversa<br>
-          <span>acontece.</span>
+          {{ t('landing.hero.titleLine') }}<br>
+          <span>{{ t('landing.hero.titleAccent') }}</span>
         </h1>
         <p class="hero-description" data-landing-reveal style="--landing-reveal-delay: 120ms">
-          Acompanhe cada evolução do Prosa. Melhorias contínuas para
-          uma experiência de comunidade sem barreiras.
+          {{ t('landing.hero.description') }}
         </p>
         <div class="hero-actions" data-landing-reveal style="--landing-reveal-delay: 180ms">
           <DownloadButton class="hero-download" />
-          <NuxtLink to="/introducao" class="hero-introduction">
+          <NuxtLinkLocale to="/introducao" class="hero-introduction">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <path
                 d="M3 4.5h5.5A1.5 1.5 0 0 1 10 6v10a2 2 0 0 0-2-2H3V4.5Zm14 0h-5.5A1.5 1.5 0 0 0 10 6v10a2 2 0 0 1 2-2h5V4.5Z"
@@ -46,8 +48,8 @@ const latestRelease = computed(() => releases.value?.find(release =>
                 stroke-linejoin="round"
               />
             </svg>
-            Introdução
-          </NuxtLink>
+            {{ t('landing.hero.intro') }}
+          </NuxtLinkLocale>
         </div>
       </div>
 

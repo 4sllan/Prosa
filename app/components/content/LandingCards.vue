@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const { t } = useI18n()
+
 const cards = useTemplateRef<HTMLElement>('cards')
 useLandingReveal(cards)
 </script>
@@ -7,10 +9,9 @@ useLandingReveal(cards)
   <section ref="cards" class="landing-cards" aria-labelledby="cards-heading">
     <div class="cards-container">
       <div class="cards-heading">
-        <h2 id="cards-heading" data-landing-reveal>Tudo para acompanhar o Prosa</h2>
+        <h2 id="cards-heading" data-landing-reveal>{{ t('landing.cards.title') }}</h2>
         <p data-landing-reveal style="--landing-reveal-delay: 80ms">
-          Cada melhoria tem uma hist&oacute;ria. Explore as novidades,
-          acompanhe as vers&otilde;es e encontre tudo direto da fonte.
+          {{ t('landing.cards.description') }}
         </p>
       </div>
       <div class="cards-grid">
@@ -20,10 +21,9 @@ useLandingReveal(cards)
               <path d="m14 3-9 11h7l-2 7 9-11h-7l2-7Z" />
             </svg>
           </span>
-          <h3>Sempre atualizado</h3>
+          <h3>{{ t('landing.cards.card1Title') }}</h3>
           <p>
-            As notas chegam a cada release publicada no GitHub.
-            Novidades, melhorias e corre&ccedil;&otilde;es, sem perder nada.
+            {{ t('landing.cards.card1Text') }}
           </p>
         </article>
         <article class="technology-card" data-landing-reveal style="--landing-reveal-delay: 90ms">
@@ -32,10 +32,9 @@ useLandingReveal(cards)
               <path d="M3 11a9 9 0 1 1 2.7 7.4M3 4v7h7M12 7v5l3 2" />
             </svg>
           </span>
-          <h3>Hist&oacute;rico completo</h3>
+          <h3>{{ t('landing.cards.card2Title') }}</h3>
           <p>
-            Uma p&aacute;gina para cada vers&atilde;o. Consulte as mudan&ccedil;as,
-            compare releases e acompanhe o caminho que nos trouxe at&eacute; aqui.
+            {{ t('landing.cards.card2Text') }}
           </p>
         </article>
         <article class="technology-card" data-landing-reveal style="--landing-reveal-delay: 180ms">
@@ -46,10 +45,9 @@ useLandingReveal(cards)
               <rect x="2" y="14" width="20" height="8" rx="2" />
             </svg>
           </span>
-          <h3>Direto da fonte</h3>
+          <h3>{{ t('landing.cards.card3Title') }}</h3>
           <p>
-            Acesse a release oficial no GitHub, com as notas,
-            os instaladores dispon&iacute;veis e todos os detalhes da atualiza&ccedil;&atilde;o.
+            {{ t('landing.cards.card3Text') }}
           </p>
         </article>
       </div>

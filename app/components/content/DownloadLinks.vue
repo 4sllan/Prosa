@@ -11,6 +11,8 @@ interface Release {
   assets: ReleaseAsset[]
 }
 
+const { t } = useI18n()
+
 const platforms = [
   { name: 'macOS', icon: 'i-simple-icons-apple', patterns: [/\.dmg$/i, /mac.*\.zip$/i] },
   { name: 'Windows', icon: 'i-simple-icons-windows', patterns: [/\.exe$/i, /\.msi$/i] },
@@ -55,7 +57,7 @@ onMounted(async () => {
       <UBadge color="primary" variant="subtle" size="lg">
         {{ release.tag_name }}
       </UBadge>
-      <span class="text-sm text-muted">versão mais recente</span>
+      <span class="text-sm text-muted">{{ t('downloads.latestVersion') }}</span>
     </div>
 
     <ul v-if="downloads.length" class="space-y-4">
@@ -78,7 +80,7 @@ onMounted(async () => {
               target="_blank"
               trailing-icon="i-lucide-arrow-down-to-line"
             >
-              Baixar
+              {{ t('downloads.download') }}
             </UButton>
           </div>
         </UCard>
@@ -93,7 +95,7 @@ onMounted(async () => {
       color="neutral"
       trailing-icon="i-lucide-external-link"
     >
-      Ver downloads no GitHub
+      {{ t('downloads.viewOnGithub') }}
     </UButton>
   </div>
 </template>

@@ -231,6 +231,7 @@ try {
     width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false
   })
   await navigate()
+  await heroSettled()
   const motion = await evaluate(`(() => {
     const root = document.querySelector('.landing-hero')
     return [...root.querySelectorAll('[data-landing-reveal]')].map(el => {
@@ -405,10 +406,10 @@ try {
     assert.equal(lowerPage.pending.length, 8)
     assert.ok(lowerPage.pending.every(item => !item.interactive && item.announced))
     const destinations = new Set([
-      ...['/', '/releases', '/download', '/introducao'].map(pagePath),
+      ...['/', '/releases', '/download', '/introducao', '/en', '/es'].map(pagePath),
       'https://github.com/4sllan/Prosa', 'https://github.com/4sllan/Prosa/issues'
     ])
-    assert.equal(lowerPage.links.length, 7)
+    assert.equal(lowerPage.links.length, 10)
     assert.ok(lowerPage.links.every(href => destinations.has(href)))
     await evaluate('window.scrollTo(0, 0)')
     const lowerScreenshot = await send('Page.captureScreenshot', {
@@ -416,7 +417,7 @@ try {
       clip: { x: 0, y: lowerPage.top, width, height: lowerPage.height, scale: 1 }
     })
     await writeFile(join(directory, `cards-footer-${width}.png`), Buffer.from(lowerScreenshot.data, 'base64'))
-    console.log(`Cards/footer ${width}px: three cards, one footer, logo loaded, seven valid links; placeholders non-interactive.`)
+    console.log(`Cards/footer ${width}px: three cards, one footer, logo loaded, ten valid links; placeholders non-interactive.`)
     assert.equal(await evaluate(`document.querySelector('link[rel="icon"]').getAttribute('href')`), pagePath('/favicon.ico'))
     if (width === 1440) {
       const height = await evaluate('document.documentElement.scrollHeight')
@@ -443,7 +444,7 @@ try {
     assert.ok(await evaluate(`document.activeElement === document.querySelectorAll('.landing-footer a')[${index}]`))
     assert.equal(await evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'solid')
   }
-  console.log('Footer keyboard: all seven links reachable with visible focus; placeholders skipped.')
+  console.log('Footer keyboard: all ten links reachable with visible focus; placeholders skipped.')
 
   await evaluate('document.activeElement?.blur(); window.scrollTo(0, 0)')
   const button = await evaluate(`(() => {

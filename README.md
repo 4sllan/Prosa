@@ -28,7 +28,7 @@ site atualizado (selo da home acompanha a última release estável)
   (`tag`, `title`, `date`, `prerelease`, `url`) e as notas em markdown. O nome
   do arquivo é a tag slugificada (`v0.6.0` → `v0-6-0.md`) porque URLs com
   sufixo tipo extensão não são pré-renderizadas pelo crawler do Nitro.
-- **Home (`/`)** — landing definida em `content/index.md` e componentes
+- **Home (`/`)** — landing definida em `content/<locale>/index.md` e componentes
   `Landing*`, com hero, seções ilustradas e cards sobre atualizações.
   O selo usa a release estável mais recente com tag e data válidas; fica oculto
   quando não há candidata. Pré-releases não aparecem nesse selo.
@@ -53,11 +53,44 @@ site atualizado (selo da home acompanha a última release estável)
 - **Reprocessamento manual** — `Actions → Conteúdo de release → Run workflow`
   informando a tag.
 
+## Internacionalização
+
+O site é servido em três idiomas com `@nuxtjs/i18n` e estratégia
+`prefix_except_default`:
+
+| Idioma | Locale | `lang` | URLs |
+| ------ | ------ | ------ | ---- |
+| Português (Brasil, padrão) | `pt` | `pt-BR` | `/`, `/introducao`, … |
+| Inglês | `en` | `en-US` | `/en/`, `/en/introducao`, … |
+| Espanhol (latino-americano) | `es` | `es-419` | `/es/`, `/es/introducao`, … |
+
+- **Textos da interface** — `i18n/locales/{pt,en,es}.json`, consumidos com
+  `useI18n()`/`t()` nos componentes e páginas. Chaves visíveis de
+  `app.config.ts` (TOC, links) também apontam para essas mensagens.
+- **Conteúdo** — `content/<locale>/` com coleções `landing_<locale>` e
+  `docs_<locale>` por idioma (`content.config.ts`); as queries fazem fallback
+  para `pt` quando um documento não existe no locale ativo. O componente
+  `app/components/content/ProseA.vue` localiza links internos do markdown.
+- **Notas de versão** — `content/releases/*.md` é compartilhada entre os
+  idiomas e permanece em português, pois é gerada automaticamente a partir
+  das releases do GitHub.
+- **Detecção de idioma** — desativada (`detectBrowserLanguage: false`);
+  `/` sempre serve pt-BR sem redirecionar. A troca é feita pelo seletor no
+  header e no rodapé da landing, que emite links reais para as outras
+  versões (funciona sem JavaScript).
+- **SEO** — `lang`, `hreflang`/`x-default` e `og:locale` por página via
+  `useLocaleHead`; datas de release formatadas com o locale ativo.
+- **Novo idioma ou texto** — adicionar as chaves nos três arquivos de
+  `i18n/locales/`, criar o documento correspondente em `content/<locale>/`
+  e, para um idioma novo, registrar o locale em `nuxt.config.ts` e as
+  coleções em `content.config.ts`.
+
 ## Stack
 
 - [Nuxt 4](https://nuxt.com) + Vue 3
-- [@nuxt/content](https://content.nuxt.com) — coleções `landing`, `docs` e `releases`
-  (`content.config.ts`)
+- [@nuxt/content](https://content.nuxt.com) — coleções `landing_{pt,en,es}`,
+  `docs_{pt,en,es}` e `releases` (`content.config.ts`)
+- [@nuxtjs/i18n](https://i18n.nuxt.com) — roteamento e mensagens por locale
 - [@nuxt/ui](https://ui.nuxt.com) — componentes e tema
 - [@nuxt/image](https://image.nuxt.com) — otimização de imagens
 - pnpm 11 + Node 24

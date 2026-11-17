@@ -17,10 +17,21 @@ const ref = value => ({ value })
 const heroPath = '../app/components/content/LandingHero.vue'
 const downloadPath = '../app/components/content/DownloadButton.vue'
 
+const messages = JSON.parse(
+  await readFile(new URL('../i18n/locales/pt.json', import.meta.url), 'utf8')
+)
+const t = key =>
+  key.split('.').reduce((acc, part) => acc?.[part], messages) ?? key
+const i18nGlobals = {
+  useI18n: () => ({ t }),
+  useLocalePath: () => path => path
+}
+
 async function selectRelease(records) {
   const globals = {
     useTemplateRef: () => ref(null),
     useLandingReveal: () => {},
+    ...i18nGlobals,
     computed,
     useAsyncData: async (_key, query) => ({ data: ref(await query()) }),
     queryCollection: (collection) => {
@@ -93,6 +104,7 @@ for (const scenario of scenarios) {
   const globals = {
     ref,
     computed,
+    ...i18nGlobals,
     navigator: {
       userAgent: scenario.ua,
       userAgentData: scenario.platform ? { platform: scenario.platform } : undefined

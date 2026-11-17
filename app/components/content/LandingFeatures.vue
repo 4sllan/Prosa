@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const { t } = useI18n()
+
 const features = useTemplateRef<HTMLElement>('features')
 useLandingReveal(features)
 </script>
@@ -8,14 +10,12 @@ useLandingReveal(features)
     <section class="feature-section" aria-labelledby="releases-heading">
       <div class="feature-grid">
         <div class="feature-copy">
-          <span class="feature-badge" data-landing-reveal>Sempre evoluindo</span>
+          <span class="feature-badge" data-landing-reveal>{{ t('landing.features.badge') }}</span>
           <h2 id="releases-heading" data-landing-reveal style="--landing-reveal-delay: 60ms">
-            Cada novidade do Prosa,<br>em um s&oacute; lugar
+            {{ t('landing.features.titleA') }}<br>{{ t('landing.features.titleB') }}
           </h2>
           <p class="section-description" data-landing-reveal style="--landing-reveal-delay: 120ms">
-            Melhorias, corre&ccedil;&otilde;es e novas possibilidades para suas
-            conversas. Acompanhe o que mudou no Prosa, direto da fonte e
-            a cada nova vers&atilde;o.
+            {{ t('landing.features.description') }}
           </p>
           <ul class="feature-list compact">
             <li data-landing-reveal style="--landing-reveal-delay: 160ms">
@@ -25,8 +25,8 @@ useLandingReveal(features)
                 </svg>
               </span>
               <div>
-                <h3>Uma p&aacute;gina por vers&atilde;o</h3>
-                <p>Novidades e corre&ccedil;&otilde;es com todos os detalhes.</p>
+                <h3>{{ t('landing.features.item1Title') }}</h3>
+                <p>{{ t('landing.features.item1Text') }}</p>
               </div>
             </li>
             <li data-landing-reveal style="--landing-reveal-delay: 200ms">
@@ -36,8 +36,8 @@ useLandingReveal(features)
                 </svg>
               </span>
               <div>
-                <h3>Todo o hist&oacute;rico, conectado</h3>
-                <p>Compare vers&otilde;es e acompanhe a evolu&ccedil;&atilde;o.</p>
+                <h3>{{ t('landing.features.item2Title') }}</h3>
+                <p>{{ t('landing.features.item2Text') }}</p>
               </div>
             </li>
           </ul>
@@ -47,8 +47,8 @@ useLandingReveal(features)
           <div class="activity-card">
             <span class="activity-symbol">+</span>
             <div>
-              <span>A cada nova release</span>
-              <strong>Mais uma boa novidade</strong>
+              <span>{{ t('landing.features.activityTop') }}</span>
+              <strong>{{ t('landing.features.activityBottom') }}</strong>
             </div>
           </div>
         </div>
@@ -59,10 +59,10 @@ useLandingReveal(features)
       <div class="feature-grid">
         <div class="feature-copy">
           <h2 id="updates-heading" class="secondary-title" data-landing-reveal>
-            Atualizar ficou mais simples
+            {{ t('landing.features.updatesTitle') }}
           </h2>
           <p class="section-description secondary-description" data-landing-reveal style="--landing-reveal-delay: 80ms">
-            Tudo o que importa para acompanhar o seu Prosa.
+            {{ t('landing.features.updatesDescription') }}
           </p>
           <ul class="feature-list spacious">
             <li data-landing-reveal style="--landing-reveal-delay: 120ms">
@@ -72,10 +72,9 @@ useLandingReveal(features)
                 </svg>
               </span>
               <div>
-                <h3>Notas organizadas</h3>
+                <h3>{{ t('landing.features.updates1Title') }}</h3>
                 <p>
-                  Melhorias, corre&ccedil;&otilde;es e contribuidores.
-                  Cada mudan&ccedil;a no seu devido lugar.
+                  {{ t('landing.features.updates1Text') }}
                 </p>
               </div>
             </li>
@@ -86,10 +85,9 @@ useLandingReveal(features)
                 </svg>
               </span>
               <div>
-                <h3>Documenta&ccedil;&atilde;o sempre &agrave; m&atilde;o</h3>
+                <h3>{{ t('landing.features.updates2Title') }}</h3>
                 <p>
-                  Encontre a introdu&ccedil;&atilde;o, navegue pelas vers&otilde;es
-                  e conhe&ccedil;a cada atualiza&ccedil;&atilde;o.
+                  {{ t('landing.features.updates2Text') }}
                 </p>
               </div>
             </li>
@@ -100,10 +98,9 @@ useLandingReveal(features)
                 </svg>
               </span>
               <div>
-                <h3>Downloads direto da fonte</h3>
+                <h3>{{ t('landing.features.updates3Title') }}</h3>
                 <p>
-                  Acesse os instaladores dispon&iacute;veis para macOS,
-                  Windows e Linux nas releases oficiais.
+                  {{ t('landing.features.updates3Text') }}
                 </p>
               </div>
             </li>
