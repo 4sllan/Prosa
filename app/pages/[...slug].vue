@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ContentNavigationItem } from '@nuxt/content'
+import type { Collections, ContentNavigationItem } from '@nuxt/content'
 import { findPageHeadline } from '@nuxt/content/utils'
 
 definePageMeta({
@@ -7,27 +7,44 @@ definePageMeta({
 })
 
 const route = useRoute()
+const { t, locale } = useI18n()
+const localePath = useLocalePath()
 const { toc } = useAppConfig()
 const navigation = inject<Ref<ContentNavigationItem[]>>('navigation')
 
+const contentPath = `/${Array.isArray(route.params.slug) ? route.params.slug.join('/') : route.params.slug}`
+const docsCollection = computed(() => `docs_${locale.value}` as keyof Collections)
+
 const { data: page } = await useAsyncData(
   `docs-${route.path}`,
-  () => queryCollection('docs').path(route.path).first()
+  async () => {
+    const content = await queryCollection(docsCollection.value).path(contentPath).first()
+    if (!content && locale.value !== 'pt') {
+      return await queryCollection('docs_pt').path(contentPath).first()
+    }
+    return content
+  },
+  { watch: [locale] }
 )
 
 if (!page.value) {
-  throw createError({ statusCode: 404, statusMessage: 'Página não encontrada', fatal: true })
+  throw createError({ statusCode: 404, statusMessage: t('docs.notFound'), fatal: true })
 }
 
 const { data: surround } = await useAsyncData(
   `${route.path}-surround`,
   () => {
     return queryCollectionItemSurroundings(
-      'docs',
-      route.path,
+      docsCollection.value,
+      contentPath,
       { fields: ['description'] }
     )
-  }
+  },
+  { watch: [locale] }
+)
+
+const localizedSurround = computed(() =>
+  surround.value?.map(item => item && { ...item, path: localePath(item.path) })
 )
 
 useSeoMeta({
@@ -35,9 +52,11 @@ useSeoMeta({
   description: page.value.description
 })
 
-const headline = computed(() => findPageHeadline(navigation?.value, page.value?.path))
+const headline = computed(() =>
+  findPageHeadline(navigation?.value, localePath(page.value?.path ?? '')))
 
-const links = computed(() => toc?.bottom?.links || [])
+const links = computed(() =>
+  (toc?.bottom?.links || []).map(link => ({ ...link, label: t(link.label) })))
 </script>
 
 <template>
@@ -53,7 +72,7 @@ const links = computed(() => toc?.bottom?.links || [])
 
       <USeparator v-if="surround?.length" />
 
-      <UContentSurround :surround="surround" />
+      <UContentSurround :surround="localizedSurround" />
     </UPageBody>
 
     <template
@@ -61,7 +80,7 @@ const links = computed(() => toc?.bottom?.links || [])
       #right
     >
       <UContentToc
-        title="Nesta página"
+        :title="t('docs.onThisPage')"
         :links="page.body?.toc?.links"
       >
         <template
@@ -78,7 +97,7 @@ const links = computed(() => toc?.bottom?.links || [])
             />
 
             <UPageLinks
-              :title="toc.bottom.title"
+              :title="t(toc.bottom.title)"
               :links="links"
             />
           </div>

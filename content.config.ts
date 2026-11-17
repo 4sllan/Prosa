@@ -1,15 +1,21 @@
 import { defineCollection, defineContentConfig, z } from '@nuxt/content'
 
+const locales = ['pt', 'en', 'es'] as const
+
 export default defineContentConfig({
   collections: {
-    landing: defineCollection({
-      type: 'page',
-      source: 'index.md'
-    }),
-    docs: defineCollection({
-      type: 'page',
-      source: [{ include: '*.md', exclude: ['index.md'] }]
-    }),
+    ...Object.fromEntries(
+      locales.flatMap(locale => [
+        [`landing_${locale}`, defineCollection({
+          type: 'page',
+          source: { include: `${locale}/**/index.md`, prefix: '' }
+        })],
+        [`docs_${locale}`, defineCollection({
+          type: 'page',
+          source: { include: `${locale}/**`, exclude: [`${locale}/index.md`], prefix: '' }
+        })]
+      ])
+    ),
     releases: defineCollection({
       type: 'page',
       source: 'releases/**',

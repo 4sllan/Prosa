@@ -3,6 +3,8 @@ definePageMeta({
   layout: 'docs'
 })
 
+const { t, localeProperties } = useI18n()
+
 const { data: pages } = await useAsyncData('releases-list', () =>
   queryCollection('releases').order('date', 'DESC').all()
 )
@@ -10,16 +12,16 @@ const { data: pages } = await useAsyncData('releases-list', () =>
 const releases = computed(() => pages.value?.filter(page => page.tag))
 
 useSeoMeta({
-  title: 'Releases — Prosa',
-  description: 'Histórico de versões do Prosa.'
+  title: `${t('releases.pageTitle')} — Prosa`,
+  description: t('releases.pageDescription')
 })
 </script>
 
 <template>
   <UPage>
     <UPageHeader
-      title="Releases"
-      description="Histórico de versões do Prosa."
+      :title="t('releases.pageTitle')"
+      :description="t('releases.pageDescription')"
     />
 
     <UPageBody>
@@ -33,17 +35,17 @@ useSeoMeta({
                     {{ release.tag }}
                   </UBadge>
                   <UBadge v-if="release.prerelease" color="warning" variant="subtle">
-                    Pré-release
+                    {{ t('releases.prerelease') }}
                   </UBadge>
                 </div>
-                <NuxtLink
+                <NuxtLinkLocale
                   :to="release.path"
                   class="text-lg font-semibold text-highlighted hover:underline"
                 >
                   {{ release.title }}
-                </NuxtLink>
+                </NuxtLinkLocale>
                 <p class="text-sm text-muted">
-                  {{ formatReleaseDate(release.date) }}
+                  {{ formatReleaseDate(release.date, localeProperties.language) }}
                 </p>
               </div>
               <UButton
@@ -63,7 +65,7 @@ useSeoMeta({
       <div v-else class="flex flex-col items-center gap-3 py-16 text-center">
         <UIcon name="i-lucide-package-open" class="size-12 text-muted" />
         <p class="text-muted">
-          Nenhuma release publicada ainda.
+          {{ t('releases.empty') }}
         </p>
       </div>
     </UPageBody>

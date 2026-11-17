@@ -1,0 +1,102 @@
+{
+  "landing": {
+    "hero": {
+      "badge": "Versión {tag} disponible",
+      "titleLine": "Donde la conversación",
+      "titleAccent": "sucede.",
+      "description": "Sigue cada evolución de Prosa. Mejoras continuas para una experiencia de comunidad sin barreras.",
+      "intro": "Introducción"
+    },
+    "features": {
+      "badge": "Siempre evolucionando",
+      "titleA": "Cada novedad de Prosa,",
+      "titleB": "en un solo lugar",
+      "description": "Mejoras, correcciones y nuevas posibilidades para tus conversaciones. Entérate de lo que cambió en Prosa, directo de la fuente y con cada nueva versión.",
+      "item1Title": "Una página por versión",
+      "item1Text": "Novedades y correcciones con todos los detalles.",
+      "item2Title": "Todo el historial, conectado",
+      "item2Text": "Compara versiones y sigue la evolución.",
+      "activityTop": "Con cada nueva versión",
+      "activityBottom": "Una buena novedad más",
+      "updatesTitle": "Actualizar se volvió más simple",
+      "updatesDescription": "Todo lo que importa para seguir tu Prosa.",
+      "updates1Title": "Notas organizadas",
+      "updates1Text": "Mejoras, correcciones y colaboradores. Cada cambio en su lugar.",
+      "updates2Title": "Documentación siempre a mano",
+      "updates2Text": "Encuentra la introducción, navega por las versiones y conoce cada actualización.",
+      "updates3Title": "Descargas directo de la fuente",
+      "updates3Text": "Accede a los instaladores disponibles para macOS, Windows y Linux en los releases oficiales."
+    },
+    "cards": {
+      "title": "Todo para seguir a Prosa",
+      "description": "Cada mejora tiene una historia. Explora las novedades, sigue las versiones y encuentra todo directo de la fuente.",
+      "card1Title": "Siempre actualizado",
+      "card1Text": "Las notas llegan con cada release publicado en GitHub. Novedades, mejoras y correcciones, sin perderte nada.",
+      "card2Title": "Historial completo",
+      "card2Text": "Una página para cada versión. Consulta los cambios, compara releases y sigue el camino que nos trajo hasta aquí.",
+      "card3Title": "Directo de la fuente",
+      "card3Text": "Accede al release oficial en GitHub, con las notas, los instaladores disponibles y todos los detalles de la actualización."
+    }
+  },
+  "footer": {
+    "homeLabel": "Prosa - Inicio",
+    "tagline": "Cada conversación, una nueva posibilidad. Sigue las novedades, conoce las versiones y sé parte de la evolución de Prosa.",
+    "githubLabel": "Prosa en GitHub (abre en una nueva pestaña)",
+    "socialX": "X: próximamente",
+    "socialLinkedin": "LinkedIn: próximamente",
+    "comingSoon": "Próximamente",
+    "platform": "Plataforma",
+    "features": "Funciones",
+    "security": "Seguridad",
+    "pricing": "Precios",
+    "download": "Descargar",
+    "resources": "Recursos",
+    "docs": "Documentación",
+    "blog": "Blog",
+    "releaseNotes": "Notas de versión",
+    "support": "Soporte",
+    "newTab": "(abre en una nueva pestaña)",
+    "legal": "Legal",
+    "privacy": "Privacidad",
+    "terms": "Términos",
+    "cookies": "Cookies",
+    "rights": "Todos los derechos reservados.",
+    "madeWith": "Hecho con pasión por las buenas conversaciones."
+  },
+  "downloads": {
+    "for": {
+      "mac": "Descargar para macOS",
+      "windows": "Descargar para Windows",
+      "linux": "Descargar para Linux"
+    },
+    "viewReleases": "Ver releases",
+    "latestVersion": "versión más reciente",
+    "download": "Descargar",
+    "viewOnGithub": "Ver descargas en GitHub"
+  },
+  "releases": {
+    "pageTitle": "Releases",
+    "pageDescription": "Historial de versiones de Prosa.",
+    "prerelease": "Versión preliminar",
+    "empty": "Todavía no hay releases publicados.",
+    "viewOnGithub": "Ver en GitHub",
+    "editOnGithub": "Editar en GitHub",
+    "publishedAt": "Publicada el {date}",
+    "seoNotes": "Notas de la versión {tag} de Prosa.",
+    "notFound": "Release no encontrado",
+    "inThisVersion": "En esta versión"
+  },
+  "docs": {
+    "notFound": "Página no encontrada",
+    "onThisPage": "En esta página",
+    "githubTitle": "Prosa en GitHub",
+    "links": {
+      "star": "Star on GitHub",
+      "report": "Reportar un problema",
+      "sponsor": "Apoyar el proyecto"
+    }
+  },
+  "locales": {
+    "label": "Idioma"
+  }
+}

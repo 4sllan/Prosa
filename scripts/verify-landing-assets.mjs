@@ -12,7 +12,8 @@ async function scriptFor(path) {
 
 const logoScript = await scriptFor('../app/components/AppLogo.vue')
 const footerScript = await scriptFor('../app/components/LandingFooter.vue')
-const appScript = await scriptFor('../app/app.vue')
+const appScript = (await scriptFor('../app/app.vue'))
+  .replace(/^\s*import\s.+?from\s+['"][^'"]+['"];?\s*$/gm, '')
 
 for (const baseURL of ['/', '/Prosa/']) {
   let head
@@ -24,11 +25,17 @@ for (const baseURL of ['/', '/Prosa/']) {
       seo: { siteName: 'Prosa' }
     }),
     useRoute: () => ({ path: '/' }),
+    useI18n: () => ({ t: key => key, locale: { value: 'pt' } }),
+    useLocalePath: () => path => path,
+    useLocaleHead: () => ({ value: {} }),
+    uiEn: {},
+    uiEs: {},
+    uiPtBr: {},
     computed: getter => ({ get value() { return getter() } }),
     useAsyncData: async (_key, query) => ({ data: { value: await query() } }),
     useLazyAsyncData: () => ({ data: { value: [] } }),
     queryCollectionNavigation: async () => [],
-    useHead: value => { head = value },
+    useHead: value => { head = typeof value === 'function' ? value() : value },
     useSeoMeta: () => {},
     provide: () => {}
   }

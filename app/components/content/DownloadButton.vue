@@ -6,14 +6,11 @@ interface ReleaseAsset {
   browser_download_url: string
 }
 
+const { t } = useI18n()
+const localePath = useLocalePath()
+
 const platform = ref<Platform | null>(null)
 const downloadUrl = ref<string | null>(null)
-
-const labels: Record<Platform, string> = {
-  mac: 'Baixar para macOS',
-  windows: 'Baixar para Windows',
-  linux: 'Baixar para Linux'
-}
 
 const matchers: Record<Platform, RegExp[]> = {
   mac: [/\.dmg$/i, /mac.*\.zip$/i],
@@ -36,11 +33,11 @@ function detectPlatform(): Platform | null {
 }
 
 const label = computed(() =>
-  platform.value ? labels[platform.value] : 'Ver releases'
+  platform.value ? t(`downloads.for.${platform.value}`) : t('downloads.viewReleases')
 )
 const to = computed(() =>
   downloadUrl.value
-  || (platform.value ? 'https://github.com/4sllan/Prosa/releases/latest' : '/releases')
+  || (platform.value ? 'https://github.com/4sllan/Prosa/releases/latest' : localePath('/releases'))
 )
 const external = computed(() => to.value.startsWith('http'))
 
