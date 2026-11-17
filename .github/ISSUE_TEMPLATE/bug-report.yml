@@ -1,0 +1,94 @@
+name: 🐞 Reportar bug
+description: Reporte um bug ou comportamento inesperado no app Prosa ou no site
+title: "[Bug]: "
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por ajudar a melhorar o Prosa 🙌
+        Preencha os detalhes abaixo.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Onde está o problema?
+      options:
+        - Aplicativo Prosa
+        - Site — home / landing page
+        - Site — página de release notes
+        - Site — documentação
+        - Site — página de download
+        - Outro
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Descreva o bug
+      description: O que aconteceu?
+      placeholder: Explique o problema com clareza.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. Acesse / abra...
+        2. Clique em...
+        3. Veja o erro...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado
+      placeholder: O que deveria ter acontecido?
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: Versão do app
+      description: Se o problema é no app, informe a versão (ex.: v0.7.0).
+      placeholder: Ex.: v0.7.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Sistema operacional
+      description: Se o problema é no app, em qual sistema ele acontece?
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Não se aplica (problema no site)
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: Navegador e dispositivo
+      description: Se o problema é no site, informe o navegador e dispositivo.
+      placeholder: Ex.: Safari no iPhone 15, Chrome no Windows 11
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots ou logs
+      description: Se possível, anexe capturas de tela ou mensagens de erro.
+      placeholder: Cole imagens ou mensagens de erro aqui.
+    validations:
+      required: false

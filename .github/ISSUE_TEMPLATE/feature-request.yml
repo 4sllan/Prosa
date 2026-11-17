@@ -1,0 +1,44 @@
+name: 🚀 Sugerir melhoria
+description: Sugira uma nova funcionalidade ou melhoria para o app Prosa ou o site
+title: "[Feature]: "
+labels: ["enhancement"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tem uma ideia para melhorar o Prosa? Ótimo 🔥
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área relacionada
+      options:
+        - Aplicativo Prosa
+        - Site — home / landing page
+        - Site — release notes
+        - Site — documentação
+        - Site — página de download
+        - Design / visual
+        - SEO / performance do site
+        - Automação de releases
+        - Outro
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Descreva a sugestão
+      placeholder: Explique sua ideia com clareza.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qual problema isso resolve?
+      placeholder: Por que essa melhoria é necessária?
+    validations:
+      required: true
