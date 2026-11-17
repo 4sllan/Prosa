@@ -17,14 +17,14 @@ function logoUrl(src?: string) {
         :src="logoUrl(header.logo.light || header.logo.dark)"
         :alt="header.logo.alt"
         class="h-8 w-auto shrink-0 dark:hidden"
-        width="32"
+        width="81"
         height="32"
       >
       <img
         :src="logoUrl(header.logo.dark || header.logo.light)"
         :alt="header.logo.alt"
         class="hidden h-8 w-auto shrink-0 dark:block"
-        width="32"
+        width="81"
         height="32"
       >
     </template>

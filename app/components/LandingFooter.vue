@@ -9,8 +9,7 @@ const logoSrc = `${useRuntimeConfig().app.baseURL}logotipo-prosa.png`
       <div class="footer-grid">
         <div class="footer-brand">
           <NuxtLink to="/" class="brand-link" aria-label="Prosa - P&aacute;gina inicial">
-            <img :src="logoSrc" alt="" width="40" height="40" loading="lazy" decoding="async">
-            <span>Prosa</span>
+            <img :src="logoSrc" alt="" width="91" height="36" loading="lazy" decoding="async">
           </NuxtLink>
           <p>
             Cada conversa, uma nova possibilidade.
@@ -88,8 +87,8 @@ const logoSrc = `${useRuntimeConfig().app.baseURL}logotipo-prosa.png`
 .landing-footer { padding: 80px 32px 0; color: #a1a0ab; background: var(--prosa-background); }
 .footer-container { max-width: 1280px; margin-inline: auto; }
 .footer-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 80px; padding-bottom: 80px; }
-.brand-link { display: inline-flex; align-items: center; gap: 9px; border-radius: 6px; color: #f5f3f7; font-size: 20px; font-weight: 700; text-decoration: none; }
-.brand-link img { width: 36px; height: 36px; object-fit: contain; }
+.brand-link { display: inline-flex; align-items: center; border-radius: 6px; }
+.brand-link img { width: auto; height: 36px; }
 .footer-brand > p { max-width: 245px; margin: 24px 0 0; font-size: 14px; line-height: 1.75; }
 .footer-socials { display: flex; gap: 14px; margin-top: 24px; }
 .footer-socials a, .social-pending { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid #ffffff12; border-radius: 50%; color: #a1a0ab; background: #ffffff03; }
